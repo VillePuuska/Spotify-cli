@@ -1,4 +1,16 @@
-use std::{env, error};
+use reqwest::Url;
+use std::{env, error, fmt::Display, io};
+
+#[derive(Debug)]
+pub struct GenericError(String);
+
+impl Display for GenericError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "GenericError: {}", self.0)
+    }
+}
+
+impl error::Error for GenericError {}
 
 pub struct SpotifyAuth {
     client_id: String,
@@ -28,22 +40,53 @@ impl SpotifyAuth {
         })
     }
 
-    pub fn get_access_token(&self) -> Result<String, ()> {
+    pub fn get_access_token(&mut self) -> Result<String, Box<dyn error::Error>> {
         match &self.access_token {
             Some(token) => Ok(token.clone()),
             None => {
-                // TODO: Auth/refresh flow
-                Err(())
+                let authorization_code = self.authorize()?;
+                let (access_token, refresh_token) = self.authenticate(&authorization_code)?;
+                self.access_token = Some(access_token.clone());
+                self.refresh_token = refresh_token;
+                Ok(access_token)
             }
         }
     }
 
-    fn authorize(&mut self) -> Result<(), ()> {
-        // TODO: authorization flow
-        Err(())
+    fn authorize(&self) -> Result<String, Box<dyn error::Error>> {
+        let url = Url::parse_with_params(
+            "https://accounts.spotify.com/authorize",
+            &[
+                ("client_id", &self.client_id),
+                ("response_type", &"code".to_string()),
+                (
+                    "redirect_uri",
+                    &format!("https://localhost:{}", &self.redirect_port),
+                ),
+            ],
+        )?;
+        println!("{}", url.as_str());
+
+        let mut user_provided_token = String::new();
+        println!("Go to this url for the auth flow: {}", url.as_str());
+        println!("Then, write the authorization code from the redirect url here:");
+        io::stdin().read_line(&mut user_provided_token)?;
+
+        #[cfg(debug_assertions)]
+        println!("Got: {user_provided_token}");
+
+        Ok(user_provided_token)
     }
 
-    fn refresh(&mut self) -> Result<(), ()> {
+    fn authenticate(
+        &mut self,
+        authorization_code: &String,
+    ) -> Result<(String, Option<String>), Box<dyn error::Error>> {
+        // TODO: implement authentication flow
+        Ok(("placeholder token".to_string(), None))
+    }
+
+    pub fn refresh_token(&mut self) -> Result<(), ()> {
         // TODO: refresh token
         Err(())
     }

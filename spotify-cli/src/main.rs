@@ -13,10 +13,12 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     // println!("name {}", parsed_res["name"]);
     // println!("weight {}", parsed_res["weight"]);
 
-    let a = SpotifyAuth::new()?;
+    let mut a = SpotifyAuth::new()?;
 
     #[cfg(debug_assertions)]
     a.print_auth_info();
+
+    println!("get_access_token result: {:?}", a.get_access_token());
 
     Ok(())
 }
