@@ -3,16 +3,8 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     StatusCode, Url,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{env, error, fmt::Display, io};
-
-#[derive(Serialize, Debug)]
-#[allow(dead_code)]
-struct AuthenticationBody {
-    grant_type: String,
-    code: String,
-    redirect_uri: String,
-}
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
