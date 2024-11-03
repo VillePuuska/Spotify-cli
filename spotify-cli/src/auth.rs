@@ -11,6 +11,7 @@ use std::{
     fmt::Display,
     fs,
     io::{self, Read, Write},
+    str::FromStr,
     time::SystemTime,
 };
 
@@ -189,24 +190,52 @@ impl SpotifyAuth {
             ],
         )?;
 
-        let mut user_provided_token = String::new();
+        let mut user_provided_url = String::new();
         println!("Go to this url for the auth flow: {}", url.as_str());
-        println!("Then, write the authorization code from the redirect url here:");
-        io::stdin().read_line(&mut user_provided_token)?;
-        user_provided_token = user_provided_token.trim().to_string();
+        println!("Then, write the entire url you were redirected to here:");
+        io::stdin().read_line(&mut user_provided_url)?;
+        user_provided_url = user_provided_url.trim().to_string();
 
-        #[cfg(debug_assertions)]
-        println!("\nUser provided token: {user_provided_token}\n");
+        // TODO: cleaner query param parsing
+        // or `tiny_http` to listen for the redirect so no user action will be required
 
-        let mut user_provided_state = String::new();
-        println!("\nNext, write the state parameter from the redirect url:");
-        io::stdin().read_line(&mut user_provided_state)?;
-        user_provided_state = user_provided_state.trim().to_string();
+        let user_url = Url::from_str(&user_provided_url)?;
+        let mut query_pairs = user_url.query_pairs();
+        let (key, user_provided_token) = query_pairs
+            .next()
+            .ok_or_else(|| "Given url does not have enough query params.")?;
+
+        let key = key.to_string();
+        if key != "code" {
+            return Err(GenericError(
+                "Query params in the given url are incorrect. Expected code to be the first param."
+                    .to_string(),
+            )
+            .into());
+        }
+
+        let user_provided_token = user_provided_token.to_string();
+        let (key, user_provided_state) = query_pairs
+            .next()
+            .ok_or_else(|| "Given url does not have enough query params.")?;
+
+        let key = key.to_string();
+        if key != "state" {
+            return Err(GenericError(
+                "Query params in the given url are incorrect. Expected state to be the second param."
+                    .to_string(),
+            )
+            .into());
+        }
+
+        let user_provided_state = user_provided_state.to_string();
 
         #[cfg(debug_assertions)]
         println!("\nGenerated state: {state}");
         #[cfg(debug_assertions)]
         println!("User provided state: {user_provided_state}\n");
+        #[cfg(debug_assertions)]
+        println!("\nToken: {user_provided_token}\n");
 
         if state != user_provided_state {
             Err(
