@@ -7,7 +7,8 @@ use std::{error, time::SystemTime};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn error::Error>> {
-    let mut a = SpotifyAuth::new()?;
+    // let mut a = SpotifyAuth::new()?;
+    let mut a = SpotifyAuth::from_file()?;
 
     #[cfg(debug_assertions)]
     println!(

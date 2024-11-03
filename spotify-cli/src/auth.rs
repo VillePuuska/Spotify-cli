@@ -4,7 +4,14 @@ use reqwest::{
     StatusCode, Url,
 };
 use serde::Deserialize;
-use std::{env, error, fmt::Display, io, time::SystemTime};
+use serde_json;
+use std::{
+    env, error,
+    fmt::Display,
+    fs,
+    io::{self, Read},
+    time::SystemTime,
+};
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
@@ -34,6 +41,13 @@ pub struct SpotifyAuth {
     access_token: Option<String>,
     valid_until: Option<u64>,
     refresh_token: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct TokenFile {
+    access_token: String,
+    valid_until: u64,
+    refresh_token: String,
 }
 
 impl SpotifyAuth {
@@ -68,20 +82,37 @@ impl SpotifyAuth {
             .parse::<u32>()
             .map_err(|_| "Failed to parse SPOTIFY_CLI_REDIRECT_PORT to a u32.")?;
 
-        // TODO: get filepath and tokens from file
+        let default_filepath = dirs::home_dir()
+            .ok_or_else(|| "Can't get home directory?")?
+            .join(".spotify_cli_token")
+            .to_str()
+            .unwrap()
+            .to_string();
+        let token_filepath = env::var("SPOTIFY_CLI_TOKEN_FILE").unwrap_or(default_filepath);
+        let mut token_file = fs::File::open(token_filepath.clone())
+            .map_err(|_| format!("Failed to open file {}", token_filepath))?;
+        let mut token_file_str = String::new();
+        token_file.read_to_string(&mut token_file_str)?;
+        let tokens: TokenFile = serde_json::from_str(&token_file_str)?;
 
         Ok(SpotifyAuth {
             client_id: client_id,
             client_secret: client_secret,
             redirect_port: redirect_port,
-            access_token: None,
-            valid_until: None,
-            refresh_token: None,
+            access_token: Some(tokens.access_token),
+            valid_until: Some(tokens.valid_until),
+            refresh_token: Some(tokens.refresh_token),
         })
+    }
+
+    fn to_file() -> Result<(), Box<dyn error::Error>> {
+        // TODO: save token to file
+        unimplemented!()
     }
 
     pub async fn reset_auth(&mut self) -> Result<(), Box<dyn error::Error>> {
         self.access_token = None;
+        self.valid_until = None;
         self.refresh_token = None;
 
         // TODO: reset tokens in file
@@ -181,10 +212,9 @@ impl SpotifyAuth {
         }
     }
 
-    #[allow(dead_code)]
     pub fn refresh_token(&mut self) -> Result<(), ()> {
         // TODO: refresh token
-        Err(())
+        unimplemented!()
     }
 
     #[cfg(debug_assertions)]
