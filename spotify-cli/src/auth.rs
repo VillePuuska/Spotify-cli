@@ -183,7 +183,7 @@ impl SpotifyAuth {
                 ("response_type", &"code".to_string()),
                 (
                     "redirect_uri",
-                    &format!("https://localhost:{}", &self.redirect_port),
+                    &format!("http://localhost:{}", &self.redirect_port),
                 ),
                 ("state", &state),
                 ("scope", &"user-read-email".to_string()),
@@ -262,7 +262,7 @@ impl SpotifyAuth {
             HeaderValue::from_str(&authorization_header)?,
         );
 
-        let redirect_uri = format!("https://localhost:{}", &self.redirect_port);
+        let redirect_uri = format!("http://localhost:{}", &self.redirect_port);
         let form = [
             ("grant_type", "authorization_code"),
             ("code", authorization_code.as_str()),
