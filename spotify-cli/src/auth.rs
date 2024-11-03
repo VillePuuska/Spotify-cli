@@ -1,4 +1,5 @@
 use base64::{prelude::BASE64_STANDARD, Engine};
+use rand::distributions::{Alphanumeric, DistString};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     StatusCode, Url,
@@ -172,6 +173,8 @@ impl SpotifyAuth {
     }
 
     fn authorize(&self) -> Result<String, Box<dyn error::Error>> {
+        let state = generate_random_state();
+
         let url = Url::parse_with_params(
             "https://accounts.spotify.com/authorize",
             &[
@@ -181,6 +184,7 @@ impl SpotifyAuth {
                     "redirect_uri",
                     &format!("https://localhost:{}", &self.redirect_port),
                 ),
+                ("state", &state),
                 ("scope", &"user-read-email".to_string()),
             ],
         )?;
@@ -194,7 +198,24 @@ impl SpotifyAuth {
         #[cfg(debug_assertions)]
         println!("\nUser provided token: {user_provided_token}\n");
 
-        Ok(user_provided_token)
+        let mut user_provided_state = String::new();
+        println!("\nNext, write the state parameter from the redirect url:");
+        io::stdin().read_line(&mut user_provided_state)?;
+        user_provided_state = user_provided_state.trim().to_string();
+
+        #[cfg(debug_assertions)]
+        println!("\nGenerated state: {state}");
+        #[cfg(debug_assertions)]
+        println!("User provided state: {user_provided_state}\n");
+
+        if state != user_provided_state {
+            Err(
+                GenericError("Invalid state! Something fishy might be going on.".to_string())
+                    .into(),
+            )
+        } else {
+            Ok(user_provided_token)
+        }
     }
 
     async fn authenticate(
@@ -321,4 +342,8 @@ fn current_time_secs_from_epoch() -> Result<u64, Box<dyn error::Error>> {
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_secs();
     Ok(secs)
+}
+
+fn generate_random_state() -> String {
+    Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
 }
