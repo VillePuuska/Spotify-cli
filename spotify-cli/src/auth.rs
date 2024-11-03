@@ -20,7 +20,7 @@ struct AuthenticationResponse {
     token_type: String,
     scope: String,
     expires_in: u64,
-    refresh_token: String,
+    refresh_token: Option<String>,
 }
 
 #[derive(Debug)]
@@ -45,9 +45,9 @@ pub struct SpotifyAuth {
 
 #[derive(Deserialize, Debug)]
 struct TokenFile {
-    access_token: String,
-    valid_until: u64,
-    refresh_token: String,
+    access_token: Option<String>,
+    valid_until: Option<u64>,
+    refresh_token: Option<String>,
 }
 
 impl SpotifyAuth {
@@ -99,9 +99,9 @@ impl SpotifyAuth {
             client_id: client_id,
             client_secret: client_secret,
             redirect_port: redirect_port,
-            access_token: Some(tokens.access_token),
-            valid_until: Some(tokens.valid_until),
-            refresh_token: Some(tokens.refresh_token),
+            access_token: tokens.access_token,
+            valid_until: tokens.valid_until,
+            refresh_token: tokens.refresh_token,
         })
     }
 
@@ -121,10 +121,25 @@ impl SpotifyAuth {
     }
 
     pub async fn get_access_token(&mut self) -> Result<String, Box<dyn error::Error>> {
-        // TODO: check for need to refresh
-        match &self.access_token {
-            Some(token) => Ok(token.clone()),
-            None => {
+        match (&self.access_token, &self.valid_until, &self.refresh_token) {
+            (Some(access_token), Some(valid_until), Some(_)) => {
+                let curr_time = current_time_secs_from_epoch()?;
+                if curr_time >= valid_until - 120 {
+                    self.refresh_token().await?;
+                    if let Some(access_token) = &self.access_token {
+                        Ok(access_token.clone())
+                    } else {
+                        Err(GenericError(
+                            "Broken auth state: access token is missing after a refresh."
+                                .to_string(),
+                        )
+                        .into())
+                    }
+                } else {
+                    Ok(access_token.clone())
+                }
+            }
+            (None, None, None) => {
                 let authorization_code = self.authorize()?;
                 let (access_token, refresh_token, valid_until) =
                     self.authenticate(&authorization_code).await?;
@@ -133,6 +148,10 @@ impl SpotifyAuth {
                 self.refresh_token = Some(refresh_token);
                 Ok(access_token)
             }
+            _ => Err(GenericError(
+                "Broken auth state: some of the token fields are missing but not all.".to_string(),
+            )
+            .into()),
         }
     }
 
@@ -204,7 +223,7 @@ impl SpotifyAuth {
 
                 Ok((
                     auth_response.access_token,
-                    auth_response.refresh_token,
+                    auth_response.refresh_token.unwrap(),
                     curr_time + auth_response.expires_in,
                 ))
             }
@@ -212,9 +231,58 @@ impl SpotifyAuth {
         }
     }
 
-    pub fn refresh_token(&mut self) -> Result<(), ()> {
-        // TODO: refresh token
-        unimplemented!()
+    pub async fn refresh_token(&mut self) -> Result<(), Box<dyn error::Error>> {
+        let url = Url::parse("https://accounts.spotify.com/api/token")?;
+
+        let mut headers = HeaderMap::new();
+        let encoded_id_and_secret =
+            BASE64_STANDARD.encode(format!("{}:{}", self.client_id, self.client_secret));
+        let authorization_header = format!("Basic {}", encoded_id_and_secret);
+        headers.insert(
+            HeaderName::from_static("authorization"),
+            HeaderValue::from_str(&authorization_header)?,
+        );
+
+        if let Some(refresh_token) = &self.refresh_token {
+            let form = [
+                ("grant_type", "refresh_token"),
+                ("refresh_token", refresh_token.as_str()),
+            ];
+
+            #[cfg(debug_assertions)]
+            println!("Refreshing token request url: {}", url.as_str());
+            #[cfg(debug_assertions)]
+            println!("Headers: {:?}", headers);
+            #[cfg(debug_assertions)]
+            println!("Form: {:?}\n", form);
+
+            let curr_time = current_time_secs_from_epoch()?;
+            let client = reqwest::Client::new();
+            let res = client.post(url).headers(headers).form(&form).send().await?;
+
+            match res.status() {
+                StatusCode::OK => {
+                    let auth_response: AuthenticationResponse = res.json().await?;
+
+                    #[cfg(debug_assertions)]
+                    println!("Refreshing token response:\n{:?}\n", auth_response);
+
+                    self.access_token = Some(auth_response.access_token);
+                    if let Some(refresh_token) = auth_response.refresh_token {
+                        self.refresh_token = Some(refresh_token);
+                    }
+                    self.valid_until = Some(curr_time + auth_response.expires_in);
+
+                    Ok(())
+                }
+                _ => Err(GenericError(res.text().await?).into()),
+            }
+        } else {
+            Err(
+                GenericError("Can't refresh token since refresh_token is missing.".to_string())
+                    .into(),
+            )
+        }
     }
 
     #[cfg(debug_assertions)]
