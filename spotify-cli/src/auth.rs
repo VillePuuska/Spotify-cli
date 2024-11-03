@@ -3,13 +3,13 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     StatusCode, Url,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
     env, error,
     fmt::Display,
     fs,
-    io::{self, Read},
+    io::{self, Read, Write},
     time::SystemTime,
 };
 
@@ -44,7 +44,7 @@ pub struct SpotifyAuth {
     filepath: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Serialize)]
 struct TokenFile {
     access_token: Option<String>,
     valid_until: Option<u64>,
@@ -82,6 +82,7 @@ impl SpotifyAuth {
     }
 
     pub fn from_file(filepath: &String) -> Result<SpotifyAuth, Box<dyn error::Error>> {
+        // TODO: create new file if doesn't exist?
         let mut auth = Self::new()?;
         auth.with_file(filepath);
         auth.load()?;
@@ -108,8 +109,18 @@ impl SpotifyAuth {
     }
 
     fn save(&self) -> Result<(), Box<dyn error::Error>> {
-        // TODO: save token to file
-        unimplemented!()
+        if let Some(ref filepath) = self.filepath {
+            let tokens = TokenFile {
+                access_token: self.access_token.clone(),
+                valid_until: self.valid_until.clone(),
+                refresh_token: self.refresh_token.clone(),
+            };
+            let token_str = serde_json::to_string(&tokens)?;
+            let mut token_file = fs::File::create(filepath)?;
+            write!(token_file, "{token_str}")?;
+        }
+
+        Ok(())
     }
 
     pub async fn reset_auth(&mut self) -> Result<(), Box<dyn error::Error>> {
@@ -117,9 +128,7 @@ impl SpotifyAuth {
         self.valid_until = None;
         self.refresh_token = None;
 
-        if let Some(_) = self.filepath {
-            self.save()?;
-        }
+        self.save()?;
 
         Ok(())
     }
@@ -150,6 +159,9 @@ impl SpotifyAuth {
                 self.access_token = Some(access_token.clone());
                 self.valid_until = Some(valid_until);
                 self.refresh_token = Some(refresh_token);
+
+                self.save()?;
+
                 Ok(access_token)
             }
             _ => Err(GenericError(
@@ -276,6 +288,8 @@ impl SpotifyAuth {
                         self.refresh_token = Some(refresh_token);
                     }
                     self.valid_until = Some(curr_time + auth_response.expires_in);
+
+                    self.save()?;
 
                     Ok(())
                 }

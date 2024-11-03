@@ -45,14 +45,14 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let res = client.get(url).headers(headers).send().await?;
     let parsed_res: Value = serde_json::from_str(res.text().await?.as_str())?;
 
-    println!("{parsed_res}");
+    println!("{parsed_res}\n");
 
-    // a.refresh_token().await?;
+    a.refresh_token().await?;
 
-    // #[cfg(debug_assertions)]
-    // println!("\n\nAuth struct state after refreshing token:");
-    // #[cfg(debug_assertions)]
-    // a.print_auth_info();
+    #[cfg(debug_assertions)]
+    println!("\n\nAuth struct state after refreshing token:");
+    #[cfg(debug_assertions)]
+    a.print_auth_info();
 
     let access_token = a.get_access_token().await?;
     println!(
