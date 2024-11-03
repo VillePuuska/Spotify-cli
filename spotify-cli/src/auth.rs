@@ -4,7 +4,7 @@ use reqwest::{
     StatusCode, Url,
 };
 use serde::Deserialize;
-use std::{env, error, fmt::Display, io};
+use std::{env, error, fmt::Display, io, time::Instant};
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
@@ -12,7 +12,7 @@ struct AuthenticationResponse {
     access_token: String,
     token_type: String,
     scope: String,
-    expires_in: i64,
+    expires_in: u64,
     refresh_token: String,
 }
 
@@ -32,6 +32,8 @@ pub struct SpotifyAuth {
     client_secret: String,
     redirect_port: u32,
     access_token: Option<String>,
+    refresh_time: Option<Instant>,
+    valid_for_secs: Option<u64>,
     refresh_token: Option<String>,
 }
 
@@ -51,17 +53,56 @@ impl SpotifyAuth {
             client_secret: client_secret,
             redirect_port: redirect_port,
             access_token: None,
+            refresh_time: None,
+            valid_for_secs: None,
             refresh_token: None,
         })
     }
 
+    pub fn from_file() -> Result<SpotifyAuth, Box<dyn error::Error>> {
+        let client_id = env::var("SPOTIFY_CLI_CLIENT_ID")
+            .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_ID must be set.")?;
+        let client_secret = env::var("SPOTIFY_CLI_CLIENT_SECRET")
+            .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_SECRET must be set.")?;
+        let redirect_port = env::var("SPOTIFY_CLI_REDIRECT_PORT")
+            .ok()
+            .unwrap_or("5555".to_string())
+            .parse::<u32>()
+            .map_err(|_| "Failed to parse SPOTIFY_CLI_REDIRECT_PORT to a u32.")?;
+
+        // TODO: get filepath and tokens from file
+
+        Ok(SpotifyAuth {
+            client_id: client_id,
+            client_secret: client_secret,
+            redirect_port: redirect_port,
+            access_token: None,
+            refresh_time: None,
+            valid_for_secs: None,
+            refresh_token: None,
+        })
+    }
+
+    pub async fn reset_auth(&mut self) -> Result<(), Box<dyn error::Error>> {
+        self.access_token = None;
+        self.refresh_token = None;
+
+        // TODO: reset tokens in file
+
+        Ok(())
+    }
+
     pub async fn get_access_token(&mut self) -> Result<String, Box<dyn error::Error>> {
+        // TODO: check for need to refresh
         match &self.access_token {
             Some(token) => Ok(token.clone()),
             None => {
                 let authorization_code = self.authorize()?;
-                let (access_token, refresh_token) = self.authenticate(&authorization_code).await?;
+                let (access_token, refresh_token, refresh_time, valid_for_secs) =
+                    self.authenticate(&authorization_code).await?;
                 self.access_token = Some(access_token.clone());
+                self.refresh_time = Some(refresh_time);
+                self.valid_for_secs = Some(valid_for_secs);
                 self.refresh_token = Some(refresh_token);
                 Ok(access_token)
             }
@@ -95,9 +136,9 @@ impl SpotifyAuth {
     }
 
     async fn authenticate(
-        &mut self,
+        &self,
         authorization_code: &String,
-    ) -> Result<(String, String), Box<dyn error::Error>> {
+    ) -> Result<(String, String, Instant, u64), Box<dyn error::Error>> {
         let url = Url::parse("https://accounts.spotify.com/api/token")?;
 
         let mut headers = HeaderMap::new();
@@ -123,6 +164,7 @@ impl SpotifyAuth {
         #[cfg(debug_assertions)]
         println!("Form: {:?}\n", form);
 
+        let curr_time = Instant::now();
         let client = reqwest::Client::new();
         let res = client.post(url).headers(headers).form(&form).send().await?;
 
@@ -133,7 +175,12 @@ impl SpotifyAuth {
                 #[cfg(debug_assertions)]
                 println!("Authentication response:\n{:?}\n", auth_response);
 
-                Ok((auth_response.access_token, auth_response.refresh_token))
+                Ok((
+                    auth_response.access_token,
+                    auth_response.refresh_token,
+                    curr_time,
+                    auth_response.expires_in,
+                ))
             }
             _ => Err(GenericError(res.text().await?).into()),
         }
@@ -151,7 +198,10 @@ impl SpotifyAuth {
         println!("client_secret: {}", self.client_secret);
         println!("redirect_port: {}", self.redirect_port);
         println!("access_token: {:?}", self.access_token);
+        println!("refresh_time: {:?}", self.refresh_time);
+        println!("valid_for_secs: {:?}", self.valid_for_secs);
         println!("refresh_token: {:?}", self.refresh_token);
+
         println!();
     }
 }

@@ -31,6 +31,12 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
 
     println!("{parsed_res}");
 
+    let access_token = a.get_access_token().await?;
+    println!(
+        "\n\n Second time get_access_token result: {:?}",
+        access_token
+    );
+
     #[cfg(debug_assertions)]
     println!("\n\nAuth struct state after everything:");
     #[cfg(debug_assertions)]
