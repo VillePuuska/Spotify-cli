@@ -41,6 +41,7 @@ pub struct SpotifyAuth {
     access_token: Option<String>,
     valid_until: Option<u64>,
     refresh_token: Option<String>,
+    filepath: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -68,44 +69,45 @@ impl SpotifyAuth {
             access_token: None,
             valid_until: None,
             refresh_token: None,
+            filepath: None,
         })
     }
 
-    pub fn from_file() -> Result<SpotifyAuth, Box<dyn error::Error>> {
-        let client_id = env::var("SPOTIFY_CLI_CLIENT_ID")
-            .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_ID must be set.")?;
-        let client_secret = env::var("SPOTIFY_CLI_CLIENT_SECRET")
-            .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_SECRET must be set.")?;
-        let redirect_port = env::var("SPOTIFY_CLI_REDIRECT_PORT")
-            .ok()
-            .unwrap_or("5555".to_string())
-            .parse::<u32>()
-            .map_err(|_| "Failed to parse SPOTIFY_CLI_REDIRECT_PORT to a u32.")?;
+    pub fn with_file(&mut self, filepath: &String) {
+        self.filepath = Some(filepath.clone());
+    }
 
-        let default_filepath = dirs::home_dir()
-            .ok_or_else(|| "Can't get home directory?")?
-            .join(".spotify_cli_token")
-            .to_str()
-            .unwrap()
-            .to_string();
-        let token_filepath = env::var("SPOTIFY_CLI_TOKEN_FILE").unwrap_or(default_filepath);
-        let mut token_file = fs::File::open(token_filepath.clone())
-            .map_err(|_| format!("Failed to open file {}", token_filepath))?;
+    pub fn remove_file(&mut self) {
+        self.filepath = None;
+    }
+
+    pub fn from_file(filepath: &String) -> Result<SpotifyAuth, Box<dyn error::Error>> {
+        let mut auth = Self::new()?;
+        auth.with_file(filepath);
+        auth.load()?;
+
+        Ok(auth)
+    }
+
+    fn load(&mut self) -> Result<(), Box<dyn error::Error>> {
+        let filepath = self
+            .filepath
+            .as_ref()
+            .ok_or_else(|| "Can't load when filepath is not set.")?;
+        let mut token_file = fs::File::open(filepath.clone())
+            .map_err(|_| format!("Failed to open file {}", filepath))?;
         let mut token_file_str = String::new();
         token_file.read_to_string(&mut token_file_str)?;
         let tokens: TokenFile = serde_json::from_str(&token_file_str)?;
 
-        Ok(SpotifyAuth {
-            client_id: client_id,
-            client_secret: client_secret,
-            redirect_port: redirect_port,
-            access_token: tokens.access_token,
-            valid_until: tokens.valid_until,
-            refresh_token: tokens.refresh_token,
-        })
+        self.access_token = tokens.access_token;
+        self.valid_until = tokens.valid_until;
+        self.refresh_token = tokens.refresh_token;
+
+        Ok(())
     }
 
-    fn to_file() -> Result<(), Box<dyn error::Error>> {
+    fn save(&self) -> Result<(), Box<dyn error::Error>> {
         // TODO: save token to file
         unimplemented!()
     }
@@ -115,7 +117,9 @@ impl SpotifyAuth {
         self.valid_until = None;
         self.refresh_token = None;
 
-        // TODO: reset tokens in file
+        if let Some(_) = self.filepath {
+            self.save()?;
+        }
 
         Ok(())
     }
