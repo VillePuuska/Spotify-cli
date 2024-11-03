@@ -4,7 +4,7 @@ use reqwest::{
     StatusCode, Url,
 };
 use serde::Deserialize;
-use std::{env, error, fmt::Display, io, time::Instant};
+use std::{env, error, fmt::Display, io, time::SystemTime};
 
 #[derive(Deserialize, Debug)]
 #[allow(dead_code)]
@@ -32,8 +32,7 @@ pub struct SpotifyAuth {
     client_secret: String,
     redirect_port: u32,
     access_token: Option<String>,
-    refresh_time: Option<Instant>,
-    valid_for_secs: Option<u64>,
+    valid_until: Option<u64>,
     refresh_token: Option<String>,
 }
 
@@ -53,8 +52,7 @@ impl SpotifyAuth {
             client_secret: client_secret,
             redirect_port: redirect_port,
             access_token: None,
-            refresh_time: None,
-            valid_for_secs: None,
+            valid_until: None,
             refresh_token: None,
         })
     }
@@ -77,8 +75,7 @@ impl SpotifyAuth {
             client_secret: client_secret,
             redirect_port: redirect_port,
             access_token: None,
-            refresh_time: None,
-            valid_for_secs: None,
+            valid_until: None,
             refresh_token: None,
         })
     }
@@ -98,11 +95,10 @@ impl SpotifyAuth {
             Some(token) => Ok(token.clone()),
             None => {
                 let authorization_code = self.authorize()?;
-                let (access_token, refresh_token, refresh_time, valid_for_secs) =
+                let (access_token, refresh_token, valid_until) =
                     self.authenticate(&authorization_code).await?;
                 self.access_token = Some(access_token.clone());
-                self.refresh_time = Some(refresh_time);
-                self.valid_for_secs = Some(valid_for_secs);
+                self.valid_until = Some(valid_until);
                 self.refresh_token = Some(refresh_token);
                 Ok(access_token)
             }
@@ -138,7 +134,7 @@ impl SpotifyAuth {
     async fn authenticate(
         &self,
         authorization_code: &String,
-    ) -> Result<(String, String, Instant, u64), Box<dyn error::Error>> {
+    ) -> Result<(String, String, u64), Box<dyn error::Error>> {
         let url = Url::parse("https://accounts.spotify.com/api/token")?;
 
         let mut headers = HeaderMap::new();
@@ -164,7 +160,7 @@ impl SpotifyAuth {
         #[cfg(debug_assertions)]
         println!("Form: {:?}\n", form);
 
-        let curr_time = Instant::now();
+        let curr_time = current_time_secs_from_epoch()?;
         let client = reqwest::Client::new();
         let res = client.post(url).headers(headers).form(&form).send().await?;
 
@@ -178,8 +174,7 @@ impl SpotifyAuth {
                 Ok((
                     auth_response.access_token,
                     auth_response.refresh_token,
-                    curr_time,
-                    auth_response.expires_in,
+                    curr_time + auth_response.expires_in,
                 ))
             }
             _ => Err(GenericError(res.text().await?).into()),
@@ -198,10 +193,16 @@ impl SpotifyAuth {
         println!("client_secret: {}", self.client_secret);
         println!("redirect_port: {}", self.redirect_port);
         println!("access_token: {:?}", self.access_token);
-        println!("refresh_time: {:?}", self.refresh_time);
-        println!("valid_for_secs: {:?}", self.valid_for_secs);
+        println!("valid_until: {:?}", self.valid_until);
         println!("refresh_token: {:?}", self.refresh_token);
 
         println!();
     }
+}
+
+fn current_time_secs_from_epoch() -> Result<u64, Box<dyn error::Error>> {
+    let secs = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_secs();
+    Ok(secs)
 }

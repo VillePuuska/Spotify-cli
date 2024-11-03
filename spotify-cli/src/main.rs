@@ -3,12 +3,19 @@ mod auth;
 use auth::SpotifyAuth;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::Value;
-use std::error;
+use std::{error, time::SystemTime};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn error::Error>> {
     let mut a = SpotifyAuth::new()?;
 
+    #[cfg(debug_assertions)]
+    println!(
+        "Starting time as secs since epoch:\n{}\n\n",
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs()
+    );
     #[cfg(debug_assertions)]
     a.print_auth_info();
 
