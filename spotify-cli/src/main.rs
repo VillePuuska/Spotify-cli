@@ -28,8 +28,15 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     #[cfg(debug_assertions)]
     a.print_auth_info();
 
+    // a.reset_auth().await?;
+
+    // #[cfg(debug_assertions)]
+    // println!("\nAuth after reset:");
+    // #[cfg(debug_assertions)]
+    // a.print_auth_info();
+
     let access_token = a.get_access_token().await?;
-    println!("get_access_token result: {:?}\n", access_token);
+    println!("\nget_access_token result: {:?}\n", access_token);
 
     println!("\n\nGot an access token. Getting user info:\n\n");
 

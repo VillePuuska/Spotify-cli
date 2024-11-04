@@ -39,7 +39,6 @@ impl error::Error for GenericError {}
 pub struct SpotifyAuth {
     client_id: String,
     client_secret: String,
-    redirect_port: u32,
     access_token: Option<String>,
     valid_until: Option<u64>,
     refresh_token: Option<String>,
@@ -59,15 +58,9 @@ impl SpotifyAuth {
             .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_ID must be set.")?;
         let client_secret = env::var("SPOTIFY_CLI_CLIENT_SECRET")
             .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_SECRET must be set.")?;
-        let redirect_port = env::var("SPOTIFY_CLI_REDIRECT_PORT")
-            .ok()
-            .unwrap_or("5555".to_string())
-            .parse::<u32>()
-            .map_err(|_| "Failed to parse SPOTIFY_CLI_REDIRECT_PORT to a u32.")?;
         Ok(SpotifyAuth {
             client_id: client_id,
             client_secret: client_secret,
-            redirect_port: redirect_port,
             access_token: None,
             valid_until: None,
             refresh_token: None,
@@ -155,9 +148,10 @@ impl SpotifyAuth {
                 }
             }
             (None, None, None) => {
-                let authorization_code = self.authorize()?;
-                let (access_token, refresh_token, valid_until) =
-                    self.authenticate(&authorization_code).await?;
+                let (authorization_code, redirect_port) = self.authorize()?;
+                let (access_token, refresh_token, valid_until) = self
+                    .authenticate(&authorization_code, redirect_port)
+                    .await?;
                 self.access_token = Some(access_token.clone());
                 self.valid_until = Some(valid_until);
                 self.refresh_token = Some(refresh_token);
@@ -173,9 +167,10 @@ impl SpotifyAuth {
         }
     }
 
-    fn authorize(&self) -> Result<String, Box<dyn error::Error>> {
+    fn authorize(&self) -> Result<(String, u32), Box<dyn error::Error>> {
         let state = generate_random_state();
 
+        let redirect_port = get_free_port();
         let url = Url::parse_with_params(
             "https://accounts.spotify.com/authorize",
             &[
@@ -183,7 +178,7 @@ impl SpotifyAuth {
                 ("response_type", &"code".to_string()),
                 (
                     "redirect_uri",
-                    &format!("http://localhost:{}", &self.redirect_port),
+                    &format!("http://localhost:{}", redirect_port),
                 ),
                 ("state", &state),
                 ("scope", &"user-read-email".to_string()),
@@ -243,13 +238,14 @@ impl SpotifyAuth {
                     .into(),
             )
         } else {
-            Ok(user_provided_token)
+            Ok((user_provided_token, redirect_port))
         }
     }
 
     async fn authenticate(
         &self,
         authorization_code: &String,
+        redirect_port: u32,
     ) -> Result<(String, String, u64), Box<dyn error::Error>> {
         let url = Url::parse("https://accounts.spotify.com/api/token")?;
 
@@ -262,7 +258,7 @@ impl SpotifyAuth {
             HeaderValue::from_str(&authorization_header)?,
         );
 
-        let redirect_uri = format!("http://localhost:{}", &self.redirect_port);
+        let redirect_uri = format!("http://localhost:{}", redirect_port);
         let form = [
             ("grant_type", "authorization_code"),
             ("code", authorization_code.as_str()),
@@ -357,7 +353,6 @@ impl SpotifyAuth {
     pub fn print_auth_info(&self) {
         println!("client_id: {}", self.client_id);
         println!("client_secret: {}", self.client_secret);
-        println!("redirect_port: {}", self.redirect_port);
         println!("access_token: {:?}", self.access_token);
         println!("valid_until: {:?}", self.valid_until);
         println!("refresh_token: {:?}", self.refresh_token);
@@ -375,4 +370,8 @@ fn current_time_secs_from_epoch() -> Result<u64, Box<dyn error::Error>> {
 
 fn generate_random_state() -> String {
     Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
+}
+
+fn get_free_port() -> u32 {
+    5555
 }
