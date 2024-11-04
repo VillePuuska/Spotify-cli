@@ -167,10 +167,10 @@ impl SpotifyAuth {
         }
     }
 
-    fn authorize(&self) -> Result<(String, u32), Box<dyn error::Error>> {
+    fn authorize(&self) -> Result<(String, u16), Box<dyn error::Error>> {
         let state = generate_random_state();
 
-        let redirect_port = get_free_port();
+        let redirect_port = get_free_port()?;
         let url = Url::parse_with_params(
             "https://accounts.spotify.com/authorize",
             &[
@@ -245,7 +245,7 @@ impl SpotifyAuth {
     async fn authenticate(
         &self,
         authorization_code: &String,
-        redirect_port: u32,
+        redirect_port: u16,
     ) -> Result<(String, String, u64), Box<dyn error::Error>> {
         let url = Url::parse("https://accounts.spotify.com/api/token")?;
 
@@ -372,6 +372,17 @@ fn generate_random_state() -> String {
     Alphanumeric.sample_string(&mut rand::thread_rng(), 16)
 }
 
-fn get_free_port() -> u32 {
-    5555
+fn get_free_port() -> Result<u16, Box<dyn error::Error>> {
+    // Allowed redirect URIs need to be specified in Spotify's app dashboard.
+    // Thus we can't use actually random ports. To allow multiple port choices,
+    // we need to list http://localhost:5555, http://localhost:5556, ... in
+    // the app dashboard.
+    // TODO: get a list of ports from an env var or something? Hardcoding is nasty.
+    let possible_ports = [5555, 5556, 5557, 5558, 5559];
+    for port in possible_ports {
+        if portpicker::is_free(port) {
+            return Ok(port);
+        }
+    }
+    Err(GenericError("All ports unavailable.".to_string()).into())
 }
