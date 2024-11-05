@@ -7,6 +7,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
+    collections::HashMap,
     env, error,
     fmt::Display,
     fs,
@@ -207,53 +208,38 @@ impl SpotifyAuth {
         };
 
         #[cfg(debug_assertions)]
-        println!("Redirected to: {redirected_to}");
+        println!("\nRedirected to: {redirected_to}");
 
         let redirected_url = Url::from_str(&redirected_to)?;
-        let mut query_pairs = redirected_url.query_pairs();
-        let (key, user_provided_token) = query_pairs
-            .next()
-            .ok_or_else(|| "Given url does not have enough query params.")?;
 
-        let key = key.to_string();
-        if key != "code" {
-            return Err(GenericError(
-                "Query params in the given url are incorrect. Expected code to be the first param."
-                    .to_string(),
-            )
-            .into());
-        }
+        let query_params: HashMap<String, String> =
+            redirected_url.query_pairs().into_owned().collect();
 
-        let user_provided_token = user_provided_token.to_string();
-        let (key, user_provided_state) = query_pairs
-            .next()
-            .ok_or_else(|| "Given url does not have enough query params.")?;
+        #[cfg(debug_assertions)]
+        println!("\nQuery params in the redirected url: {query_params:?}");
 
-        let key = key.to_string();
-        if key != "state" {
-            return Err(GenericError(
-                "Query params in the given url are incorrect. Expected state to be the second param."
-                    .to_string(),
-            )
-            .into());
-        }
-
-        let user_provided_state = user_provided_state.to_string();
+        let token = query_params
+            .get("code")
+            .ok_or_else(|| "The query param code is missing from redirect url.")?
+            .clone();
+        let redirect_state = query_params
+            .get("state")
+            .ok_or_else(|| "The query param state is missing from redirect url.")?;
 
         #[cfg(debug_assertions)]
         println!("\nGenerated state: {state}");
         #[cfg(debug_assertions)]
-        println!("User provided state: {user_provided_state}\n");
+        println!("User provided state: {redirect_state}\n");
         #[cfg(debug_assertions)]
-        println!("\nToken: {user_provided_token}\n");
+        println!("\nToken: {token}\n");
 
-        if state != user_provided_state {
+        if &state != redirect_state {
             Err(
                 GenericError("Invalid state! Something fishy might be going on.".to_string())
                     .into(),
             )
         } else {
-            Ok((user_provided_token, redirect_port))
+            Ok((token, redirect_port))
         }
     }
 
