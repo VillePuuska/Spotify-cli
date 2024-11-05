@@ -185,17 +185,32 @@ impl SpotifyAuth {
             ],
         )?;
 
-        let mut user_provided_url = String::new();
         println!("Go to this url for the auth flow: {}", url.as_str());
-        println!("Then, write the entire url you were redirected to here:");
-        io::stdin().read_line(&mut user_provided_url)?;
-        user_provided_url = user_provided_url.trim().to_string();
 
-        // TODO: cleaner query param parsing
-        // or `tiny_http` to listen for the redirect so no user action will be required
+        let redirected_to = match tiny_http::Server::http(format!("127.0.0.1:{redirect_port}")) {
+            Ok(server) => {
+                let request = server.recv()?;
+                let request_url = request.url().to_string();
+                request.respond(tiny_http::Response::from_string(
+                    "Succesfully received the redirected url. You can now close this tab."
+                        .to_string(),
+                ))?;
+                format!("http://localhost:{redirect_port}{request_url}")
+            }
+            Err(e) => {
+                println!("Failed to start a server to listen to the redirect:\n{e}\n");
+                println!("Instead, write the entire url you were redirected to here:");
+                let mut user_provided_url = String::new();
+                io::stdin().read_line(&mut user_provided_url)?;
+                user_provided_url.trim().to_string()
+            }
+        };
 
-        let user_url = Url::from_str(&user_provided_url)?;
-        let mut query_pairs = user_url.query_pairs();
+        #[cfg(debug_assertions)]
+        println!("Redirected to: {redirected_to}");
+
+        let redirected_url = Url::from_str(&redirected_to)?;
+        let mut query_pairs = redirected_url.query_pairs();
         let (key, user_provided_token) = query_pairs
             .next()
             .ok_or_else(|| "Given url does not have enough query params.")?;
