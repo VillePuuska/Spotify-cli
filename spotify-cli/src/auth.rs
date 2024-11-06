@@ -54,6 +54,13 @@ struct TokenFile {
 }
 
 impl SpotifyAuth {
+    /// Creates a new `SpotifyAuth` object.
+    ///
+    /// NOTE: the credentials will not be saved & synced to a file yet.
+    /// To set a new file to save credentials to, set the filepath with
+    /// `with_file` after initializing with this method.
+    /// If you're actually looking to read credentials from a file,
+    /// don't use this method; use `from_file` instead.
     pub fn new() -> Result<SpotifyAuth, Box<dyn error::Error>> {
         let client_id = env::var("SPOTIFY_CLI_CLIENT_ID")
             .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_ID must be set.")?;
@@ -69,18 +76,31 @@ impl SpotifyAuth {
         })
     }
 
-    pub fn with_file(&mut self, filepath: &String) {
+    /// Sets a file to save & sync credentials to.
+    ///
+    /// NOTE: overwrites any existing data.
+    pub fn with_file(&mut self, filepath: &String) -> Result<(), Box<dyn error::Error>> {
         self.filepath = Some(filepath.clone());
+        self.save()?;
+
+        Ok(())
     }
 
+    /// Stops saving & syncing credentials to a file.
+    ///
+    /// NOTE: this does not delete the file, if it already exists.
+    /// The filepath is simply set to `None` in the struct.
     pub fn remove_file(&mut self) {
         self.filepath = None;
     }
 
+    /// Reads credentials from a file.
+    ///
+    /// NOTE: fails if file does not already exist. Use `with_file` if you're
+    /// looking to read credentials from an existing file.
     pub fn from_file(filepath: &String) -> Result<SpotifyAuth, Box<dyn error::Error>> {
-        // TODO: create new file if doesn't exist?
         let mut auth = Self::new()?;
-        auth.with_file(filepath);
+        auth.filepath = Some(filepath.clone());
         auth.load()?;
 
         Ok(auth)
@@ -119,6 +139,10 @@ impl SpotifyAuth {
         Ok(())
     }
 
+    /// Resets the tokens.
+    ///
+    /// NOTE: if the credentials are saved to a file, this method also
+    /// resets the data in the file.
     pub async fn reset_auth(&mut self) -> Result<(), Box<dyn error::Error>> {
         self.access_token = None;
         self.valid_until = None;
@@ -129,6 +153,13 @@ impl SpotifyAuth {
         Ok(())
     }
 
+    /// This method retrieves an access token for the authorized user.
+    ///
+    /// If there is not authorized user yet, starts with the authorization
+    /// & authentication flow.
+    ///
+    /// If the token is about to expire within 2 minutes, then the token is
+    /// first refreshed.
     pub async fn get_access_token(&mut self) -> Result<String, Box<dyn error::Error>> {
         match (&self.access_token, &self.valid_until, &self.refresh_token) {
             (Some(access_token), Some(valid_until), Some(_)) => {
@@ -294,6 +325,14 @@ impl SpotifyAuth {
         }
     }
 
+    /// Refreshed the access token. Returns an error if there is no
+    /// authorized & authenticated user yet.
+    ///
+    /// NOTE: this is mainly intended to allow manual refreshing of a token
+    /// if the current token is not yet about to expire but is misbehaving
+    /// for some reason, OR if you need to get a token that will not expire
+    /// within a longer duration than the 2 minutes set as the refresh limit
+    /// in the method `get_access_token`.
     pub async fn refresh_token(&mut self) -> Result<(), Box<dyn error::Error>> {
         let url = Url::parse("https://accounts.spotify.com/api/token")?;
 

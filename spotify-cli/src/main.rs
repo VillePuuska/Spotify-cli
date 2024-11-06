@@ -7,8 +7,6 @@ use std::{env, error, time::SystemTime};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn error::Error>> {
-    // let mut a = SpotifyAuth::new()?;
-
     let default_filepath = dirs::home_dir()
         .ok_or_else(|| "Can't get home directory?")?
         .join(".spotify_cli_token")
@@ -16,7 +14,11 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         .unwrap()
         .to_string();
     let token_filepath = env::var("SPOTIFY_CLI_TOKEN_FILE").unwrap_or(default_filepath);
+
     let mut a = SpotifyAuth::from_file(&token_filepath)?;
+
+    // let mut a = SpotifyAuth::new()?;
+    // a.with_file(&token_filepath)?;
 
     #[cfg(debug_assertions)]
     println!(
