@@ -1,10 +1,12 @@
 [package]
 name = "spotify-cli"
 version = "0.1.0"
+authors = ["Ville Puuska"]
 edition = "2021"
 
 [dependencies]
 base64 = "0.22.1"
+clap = { version = "4.5.20", features = ["cargo", "derive"] }
 dirs = "5.0.1"
 portpicker = "0.1.1"
 rand = "0.8.5"
