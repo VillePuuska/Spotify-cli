@@ -213,7 +213,11 @@ impl SpotifyAuth {
                     &format!("http://localhost:{}", redirect_port),
                 ),
                 ("state", &state),
-                ("scope", &"user-read-email".to_string()),
+                (
+                    "scope",
+                    &"user-read-email user-read-playback-state user-read-currently-playing"
+                        .to_string(),
+                ),
             ],
         )?;
 
