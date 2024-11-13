@@ -215,7 +215,7 @@ impl SpotifyAuth {
                 ("state", &state),
                 (
                     "scope",
-                    &"user-read-email user-read-playback-state user-read-currently-playing"
+                    &"user-read-playback-state user-read-currently-playing user-modify-playback-state"
                         .to_string(),
                 ),
             ],

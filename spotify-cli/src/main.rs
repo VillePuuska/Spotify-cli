@@ -68,6 +68,9 @@ enum PlaybackCommand {
 
     /// Play previous track
     Previous,
+
+    /// Restart current track
+    Restart,
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -106,8 +109,23 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let mut auth = SpotifyAuth::from_file(&token_path)?;
 
     match args.command {
+        Command::Playback(PlaybackCommand::Pause) => {
+            playback_pause(&mut auth).await?;
+        }
+        Command::Playback(PlaybackCommand::Play) => {
+            playback_play(&mut auth).await?;
+        }
         Command::Playback(PlaybackCommand::Show) => {
             playback_show(&mut auth).await?;
+        }
+        Command::Playback(PlaybackCommand::Next) => {
+            playback_next(&mut auth).await?;
+        }
+        Command::Playback(PlaybackCommand::Previous) => {
+            playback_previous(&mut auth).await?;
+        }
+        Command::Playback(PlaybackCommand::Restart) => {
+            playback_restart(&mut auth).await?;
         }
         Command::Queue(QueueCommand::Show) => {
             queue_show(&mut auth).await?;
@@ -160,6 +178,7 @@ struct PlayerResponse {
     device: Device,
     #[serde(rename(deserialize = "item"))]
     song: Song,
+    is_playing: bool,
 }
 
 async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
@@ -174,6 +193,123 @@ async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Erro
 
     println!("{:#?}", response.device);
     println!("{:#?}", response.song);
+    println!("Playing? {}", response.is_playing);
+
+    Ok(())
+}
+
+async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player/pause".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .put(url)
+        .headers(headers)
+        .header("content-length", 0)
+        .send()
+        .await?;
+
+    let response = res.text().await?;
+
+    #[cfg(debug_assertions)]
+    let response_str = response.as_str();
+    #[cfg(debug_assertions)]
+    println!("{response_str}");
+
+    Ok(())
+}
+
+async fn playback_play(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player/play".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .put(url)
+        .headers(headers)
+        .header("content-length", 0)
+        .send()
+        .await?;
+
+    let response = res.text().await?;
+
+    #[cfg(debug_assertions)]
+    let response_str = response.as_str();
+    #[cfg(debug_assertions)]
+    println!("{response_str}");
+
+    Ok(())
+}
+
+async fn playback_next(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player/next".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post(url)
+        .headers(headers)
+        .header("content-length", 0)
+        .send()
+        .await?;
+
+    let response = res.text().await?;
+
+    #[cfg(debug_assertions)]
+    let response_str = response.as_str();
+    #[cfg(debug_assertions)]
+    println!("{response_str}");
+
+    Ok(())
+}
+
+async fn playback_previous(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player/previous".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .post(url)
+        .headers(headers)
+        .header("content-length", 0)
+        .send()
+        .await?;
+
+    let response = res.text().await?;
+
+    #[cfg(debug_assertions)]
+    let response_str = response.as_str();
+    #[cfg(debug_assertions)]
+    println!("{response_str}");
+
+    Ok(())
+}
+
+async fn playback_restart(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player/seek".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .put(url)
+        .query(&[("position_ms", 0)])
+        .headers(headers)
+        .header("content-length", 0)
+        .send()
+        .await?;
+
+    let response = res.text().await?;
+
+    #[cfg(debug_assertions)]
+    let response_str = response.as_str();
+    #[cfg(debug_assertions)]
+    println!("{response_str}");
 
     Ok(())
 }
