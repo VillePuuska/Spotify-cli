@@ -62,6 +62,12 @@ enum PlaybackCommand {
 
     /// Show current playback
     Show,
+
+    /// Play next track
+    Next,
+
+    /// Play previous track
+    Previous,
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -102,6 +108,9 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     match args.command {
         Command::Playback(PlaybackCommand::Show) => {
             playback_show(&mut auth).await?;
+        }
+        Command::Queue(QueueCommand::Show) => {
+            queue_show(&mut auth).await?;
         }
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
         Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
@@ -165,6 +174,33 @@ async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Erro
 
     println!("{:#?}", response.device);
     println!("{:#?}", response.song);
+
+    Ok(())
+}
+
+#[derive(Deserialize, Debug)]
+struct PlayerQueueResponse {
+    #[serde(rename(deserialize = "currently_playing"))]
+    current: Song,
+    #[serde(rename(deserialize = "queue"))]
+    queued: Vec<Song>,
+}
+
+async fn queue_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player/queue".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client.get(url).headers(headers).send().await?;
+
+    let response: PlayerQueueResponse = serde_json::from_str(res.text().await?.as_str())?;
+
+    println!("{:#?}", response.current);
+    println!(
+        "{:#?}",
+        response.queued.iter().take(3).collect::<Vec<&Song>>()
+    );
 
     Ok(())
 }
