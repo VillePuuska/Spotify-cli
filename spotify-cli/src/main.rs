@@ -3,6 +3,7 @@ mod auth;
 use auth::SpotifyAuth;
 use clap::{Args, Parser, Subcommand};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use serde::Deserialize;
 use serde_json::Value;
 use std::{env, error};
 
@@ -121,6 +122,37 @@ async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error:
     Ok(headers)
 }
 
+#[derive(Deserialize, Debug)]
+struct Album {
+    name: String,
+    artists: Vec<Artist>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Artist {
+    name: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Song {
+    album: Option<Album>,
+    name: String,
+    artists: Vec<Artist>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Device {
+    name: String,
+    r#type: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlayerResponse {
+    device: Device,
+    #[serde(rename(deserialize = "item"))]
+    song: Song,
+}
+
 async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player".to_string();
 
@@ -128,27 +160,11 @@ async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Erro
 
     let client = reqwest::Client::new();
     let res = client.get(url).headers(headers).send().await?;
-    let parsed_res: Value = serde_json::from_str(res.text().await?.as_str())?;
 
-    println!("Playing on: {}", parsed_res["device"]["name"]);
+    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
 
-    // TODO: song struct, impl display, maybe don't just unwrap everything
-    let artists: Vec<String> = parsed_res["item"]["artists"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|x| x["name"].clone().to_string())
-        .collect();
-    println!(
-        "Artists:    {}",
-        artists
-            .iter()
-            .fold("".to_string(), |acc, x| acc + ", " + x)
-            .strip_prefix(", ")
-            .unwrap()
-    );
-
-    println!("Song:       {}", parsed_res["item"]["name"]);
+    println!("{:#?}", response.device);
+    println!("{:#?}", response.song);
 
     Ok(())
 }
