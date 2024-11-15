@@ -54,28 +54,39 @@ enum Command {
 #[derive(Clone, Debug, Subcommand)]
 enum PlaybackCommand {
     /// Pause playback
+    #[command(visible_alias = "stop")]
     Pause,
 
     /// Start/resume playback
+    #[command(visible_alias = "start")]
     Play,
 
     /// Show current playback
+    #[command(visible_alias = "current")]
     Show,
 
     /// Play next track
+    #[command(visible_alias = "forward")]
     Next,
 
     /// Play previous track
+    #[command(visible_alias = "back")]
     Previous,
 
     /// Restart current track
+    #[command(visible_alias = "rewind")]
     Restart,
 }
 
 #[derive(Clone, Debug, Subcommand)]
 enum QueueCommand {
     /// Show current queue
-    Show,
+    #[command(visible_alias = "current")]
+    Show {
+        /// Number of songs in the queue to show (including the current song).
+        #[arg(default_value = "5")]
+        number: usize,
+    },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -126,8 +137,8 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         Command::Playback(PlaybackCommand::Restart) => {
             playback_restart(&mut auth).await?;
         }
-        Command::Queue(QueueCommand::Show) => {
-            queue_show(&mut auth).await?;
+        Command::Queue(QueueCommand::Show { number }) => {
+            queue_show(&mut auth, number).await?;
         }
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
         Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,

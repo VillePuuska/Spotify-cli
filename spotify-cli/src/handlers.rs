@@ -187,7 +187,10 @@ struct PlayerQueueResponse {
     queued: Vec<Song>,
 }
 
-pub async fn queue_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+pub async fn queue_show(
+    auth: &mut SpotifyAuth,
+    number: usize,
+) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player/queue".to_string();
 
     let headers = auth_header(auth).await?;
@@ -198,10 +201,16 @@ pub async fn queue_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Err
     let response: PlayerQueueResponse = serde_json::from_str(res.text().await?.as_str())?;
 
     println!("{:#?}", response.current);
-    println!(
-        "{:#?}",
-        response.queued.iter().take(3).collect::<Vec<&Song>>()
-    );
+    if number > 1 {
+        println!(
+            "{:#?}",
+            response
+                .queued
+                .iter()
+                .take(number - 1)
+                .collect::<Vec<&Song>>()
+        );
+    }
 
     Ok(())
 }
