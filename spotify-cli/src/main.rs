@@ -120,9 +120,9 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let client_secret = env::var("SPOTIFY_CLI_CLIENT_SECRET")
         .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_SECRET must be set.")?;
 
-    let mut auth = match fs::exists(&token_path) {
-        Ok(true) => SpotifyAuth::from_file(&client_id, &client_secret, &token_path)?,
-        _ => {
+    let mut auth = match fs::exists(&token_path)? {
+        true => SpotifyAuth::from_file(&client_id, &client_secret, &token_path)?,
+        false => {
             println!("There are no tokens saved in {token_path}.");
             println!("Save new tokens there? Y/n");
 
