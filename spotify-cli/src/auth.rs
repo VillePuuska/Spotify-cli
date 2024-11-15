@@ -90,6 +90,7 @@ impl SpotifyAuth {
     ///
     /// NOTE: this does not delete the file, if it already exists.
     /// The filepath is simply set to `None` in the struct.
+    #[allow(dead_code)]
     pub fn remove_file(&mut self) {
         self.filepath = None;
     }
@@ -394,6 +395,7 @@ impl SpotifyAuth {
     }
 
     #[cfg(debug_assertions)]
+    #[allow(dead_code)]
     pub fn print_auth_info(&self) {
         println!("client_id: {}", self.client_id);
         println!("client_secret: {}", self.client_secret);
