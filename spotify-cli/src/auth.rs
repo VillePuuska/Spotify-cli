@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::{
     collections::HashMap,
-    env, error,
+    error,
     fmt::Display,
     fs,
     io::{self, Read, Write},
@@ -61,14 +61,13 @@ impl SpotifyAuth {
     /// `with_file` after initializing with this method.
     /// If you're actually looking to read credentials from a file,
     /// don't use this method; use `from_file` instead.
-    pub fn new() -> Result<SpotifyAuth, Box<dyn error::Error>> {
-        let client_id = env::var("SPOTIFY_CLI_CLIENT_ID")
-            .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_ID must be set.")?;
-        let client_secret = env::var("SPOTIFY_CLI_CLIENT_SECRET")
-            .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_SECRET must be set.")?;
+    pub fn new(
+        client_id: &String,
+        client_secret: &String,
+    ) -> Result<SpotifyAuth, Box<dyn error::Error>> {
         Ok(SpotifyAuth {
-            client_id: client_id,
-            client_secret: client_secret,
+            client_id: client_id.clone(),
+            client_secret: client_secret.clone(),
             access_token: None,
             valid_until: None,
             refresh_token: None,
@@ -99,8 +98,12 @@ impl SpotifyAuth {
     ///
     /// NOTE: fails if file does not already exist. Use `with_file` if you're
     /// looking to read credentials from an existing file.
-    pub fn from_file(filepath: &String) -> Result<SpotifyAuth, Box<dyn error::Error>> {
-        let mut auth = Self::new()?;
+    pub fn from_file(
+        client_id: &String,
+        client_secret: &String,
+        filepath: &String,
+    ) -> Result<SpotifyAuth, Box<dyn error::Error>> {
+        let mut auth = Self::new(client_id, client_secret)?;
         auth.filepath = Some(filepath.clone());
         auth.load()?;
 
