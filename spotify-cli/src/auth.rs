@@ -5,7 +5,6 @@ use reqwest::{
     StatusCode, Url,
 };
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::{
     collections::HashMap,
     error,
@@ -61,13 +60,10 @@ impl SpotifyAuth {
     /// `with_file` after initializing with this method.
     /// If you're actually looking to read credentials from a file,
     /// don't use this method; use `from_file` instead.
-    pub fn new(
-        client_id: &String,
-        client_secret: &String,
-    ) -> Result<SpotifyAuth, Box<dyn error::Error>> {
+    pub fn new(client_id: &str, client_secret: &str) -> Result<SpotifyAuth, Box<dyn error::Error>> {
         Ok(SpotifyAuth {
-            client_id: client_id.clone(),
-            client_secret: client_secret.clone(),
+            client_id: client_id.to_owned(),
+            client_secret: client_secret.to_owned(),
             access_token: None,
             valid_until: None,
             refresh_token: None,
@@ -78,8 +74,8 @@ impl SpotifyAuth {
     /// Sets a file to save & sync credentials to.
     ///
     /// NOTE: overwrites any existing data.
-    pub fn with_file(&mut self, filepath: &String) -> Result<(), Box<dyn error::Error>> {
-        self.filepath = Some(filepath.clone());
+    pub fn with_file(&mut self, filepath: &str) -> Result<(), Box<dyn error::Error>> {
+        self.filepath = Some(filepath.to_owned());
         self.save()?;
 
         Ok(())
@@ -99,12 +95,12 @@ impl SpotifyAuth {
     /// NOTE: fails if file does not already exist. Use `with_file` if you're
     /// looking to read credentials from an existing file.
     pub fn from_file(
-        client_id: &String,
-        client_secret: &String,
-        filepath: &String,
+        client_id: &str,
+        client_secret: &str,
+        filepath: &str,
     ) -> Result<SpotifyAuth, Box<dyn error::Error>> {
         let mut auth = Self::new(client_id, client_secret)?;
-        auth.filepath = Some(filepath.clone());
+        auth.filepath = Some(filepath.to_owned());
         auth.load()?;
 
         Ok(auth)
@@ -114,7 +110,7 @@ impl SpotifyAuth {
         let filepath = self
             .filepath
             .as_ref()
-            .ok_or_else(|| "Can't load when filepath is not set.")?;
+            .ok_or("Can't load when filepath is not set.")?;
         let mut token_file = fs::File::open(filepath.clone())
             .map_err(|_| format!("Failed to open file {}", filepath))?;
         let mut token_file_str = String::new();
@@ -132,7 +128,7 @@ impl SpotifyAuth {
         if let Some(ref filepath) = self.filepath {
             let tokens = TokenFile {
                 access_token: self.access_token.clone(),
-                valid_until: self.valid_until.clone(),
+                valid_until: self.valid_until,
                 refresh_token: self.refresh_token.clone(),
             };
             let token_str = serde_json::to_string(&tokens)?;
@@ -259,11 +255,11 @@ impl SpotifyAuth {
 
         let token = query_params
             .get("code")
-            .ok_or_else(|| "The query param code is missing from redirect url.")?
+            .ok_or("The query param code is missing from redirect url.")?
             .clone();
         let redirect_state = query_params
             .get("state")
-            .ok_or_else(|| "The query param state is missing from redirect url.")?;
+            .ok_or("The query param state is missing from redirect url.")?;
 
         #[cfg(debug_assertions)]
         println!("\nGenerated state: {state}");
@@ -284,7 +280,7 @@ impl SpotifyAuth {
 
     async fn authenticate(
         &self,
-        authorization_code: &String,
+        authorization_code: &str,
         redirect_port: u16,
     ) -> Result<(String, String, u64), Box<dyn error::Error>> {
         let url = Url::parse("https://accounts.spotify.com/api/token")?;
@@ -301,7 +297,7 @@ impl SpotifyAuth {
         let redirect_uri = format!("http://localhost:{}", redirect_port);
         let form = [
             ("grant_type", "authorization_code"),
-            ("code", authorization_code.as_str()),
+            ("code", authorization_code),
             ("redirect_uri", redirect_uri.as_str()),
         ];
 

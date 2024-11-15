@@ -106,7 +106,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         Some(token_path) => token_path,
         None => {
             let default_filepath = dirs::home_dir()
-                .ok_or_else(|| "Can't get home directory?")?
+                .ok_or("Can't get home directory?")?
                 .join(".spotify_cli_token")
                 .to_str()
                 .unwrap()
@@ -130,7 +130,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             io::stdin().read_line(&mut user_response)?;
             user_response = user_response.trim().to_lowercase();
 
-            if !(user_response == "" || user_response.starts_with("y")) {
+            if !(user_response.is_empty() || user_response.starts_with("y")) {
                 println!("Ok, NOT generating and saving new tokens. Exiting.");
                 return Ok(());
             }
