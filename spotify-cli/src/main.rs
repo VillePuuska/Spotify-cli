@@ -4,7 +4,7 @@ mod handlers;
 use auth::SpotifyAuth;
 use clap::{Args, Parser, Subcommand};
 use handlers::*;
-use std::{env, error, fs};
+use std::{env, error, fs, io};
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -120,13 +120,21 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     let client_secret = env::var("SPOTIFY_CLI_CLIENT_SECRET")
         .map_err(|_| "The env variable SPOTIFY_CLI_CLIENT_SECRET must be set.")?;
 
-    // TODO: Should I just do this in SpotifyAuth::from_file instead?
-    // Or should I maybe add a user prompt _here_ to verify they want to create a new file
-    // to make sure they (read: I) didn't e.g. typo the token filepath? That was the original
-    // reason to not do this in SpotifyAuth::from_file.
     let mut auth = match fs::exists(&token_path) {
         Ok(true) => SpotifyAuth::from_file(&client_id, &client_secret, &token_path)?,
         _ => {
+            println!("There are no tokens saved in {token_path}.");
+            println!("Save new tokens there? Y/n");
+
+            let mut user_response = String::new();
+            io::stdin().read_line(&mut user_response)?;
+            user_response = user_response.trim().to_lowercase();
+
+            if !(user_response == "" || user_response.starts_with("y")) {
+                println!("Ok, NOT generating and saving new tokens. Exiting.");
+                return Ok(());
+            }
+
             let mut tmp = SpotifyAuth::new(&client_id, &client_secret)?;
             tmp.with_file(&token_path)?;
             tmp
