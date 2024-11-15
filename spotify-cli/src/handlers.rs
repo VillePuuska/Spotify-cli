@@ -1,7 +1,7 @@
 use super::auth::SpotifyAuth;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
-use std::error;
+use std::{error, fmt::Display};
 
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
@@ -17,7 +17,7 @@ async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error:
 #[derive(Deserialize, Debug)]
 struct Album {
     name: String,
-    artists: Vec<Artist>,
+    // artists: Vec<Artist>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -32,10 +32,39 @@ struct Song {
     artists: Vec<Artist>,
 }
 
+impl Display for Song {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let artists_str = if self.artists.len() > 0 {
+            let tmp = self
+                .artists
+                .iter()
+                .fold("".to_string(), |acc, x| acc + ", " + &x.name);
+            tmp.strip_prefix(", ").unwrap().to_string()
+        } else {
+            "unknown artist".to_string()
+        };
+
+        match &self.album {
+            Some(album) => write!(
+                f,
+                "{} - {} [from the album: {}]",
+                self.name, artists_str, album.name
+            ),
+            None => write!(f, "{} - {}", self.name, artists_str),
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 struct Device {
     name: String,
     r#type: String,
+}
+
+impl Display for Device {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.name, self.r#type)
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -56,9 +85,11 @@ pub async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
 
     let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
 
-    println!("{:#?}", response.device);
-    println!("{:#?}", response.song);
-    println!("Playing? {}", response.is_playing);
+    println!("Current song: {}", response.song);
+    if !response.is_playing {
+        println!("(paused)");
+    }
+    println!("Device:       {}", response.device);
 
     Ok(())
 }
@@ -200,16 +231,18 @@ pub async fn queue_show(
 
     let response: PlayerQueueResponse = serde_json::from_str(res.text().await?.as_str())?;
 
-    println!("{:#?}", response.current);
+    println!("Currently playing: {}", response.current);
     if number > 1 {
-        println!(
-            "{:#?}",
-            response
-                .queued
-                .iter()
-                .take(number - 1)
-                .collect::<Vec<&Song>>()
-        );
+        let digits = number.to_string().len();
+        for (ind, song) in response.queued.iter().take(number - 1).enumerate() {
+            let start = format!(
+                "#{}{} in queue:       ",
+                ind + 1,
+                " ".repeat(digits - (ind + 1).to_string().len())
+            );
+            let (start, _) = start.split_at(19);
+            println!("{}{}", start, song);
+        }
     }
 
     Ok(())
