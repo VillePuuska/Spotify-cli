@@ -153,9 +153,11 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         }
         Command::Playback(PlaybackCommand::Next) => {
             playback_next(&mut auth).await?;
+            playback_show(&mut auth).await?;
         }
         Command::Playback(PlaybackCommand::Previous) => {
             playback_previous(&mut auth).await?;
+            playback_show(&mut auth).await?;
         }
         Command::Playback(PlaybackCommand::Restart) => {
             playback_restart(&mut auth).await?;
