@@ -4,7 +4,7 @@ mod handlers;
 use auth::SpotifyAuth;
 use clap::{Args, Parser, Subcommand};
 use handlers::*;
-use std::{env, error};
+use std::{env, error, fs};
 
 #[derive(Debug, Parser)]
 #[clap(
@@ -115,8 +115,18 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         }
     };
 
-    // TODO: check if file exists; if not create auth struct with new file instead
-    let mut auth = SpotifyAuth::from_file(&token_path)?;
+    // TODO: Should I just do this in SpotifyAuth::from_file instead?
+    // Or should I maybe add a user prompt _here_ to verify they want to create a new file
+    // to make sure they (read: I) didn't e.g. typo the token filepath? That was the original
+    // reason to not do this in SpotifyAuth::from_file.
+    let mut auth = match fs::exists(&token_path) {
+        Ok(true) => SpotifyAuth::from_file(&token_path)?,
+        _ => {
+            let mut tmp = SpotifyAuth::new()?;
+            tmp.with_file(&token_path)?;
+            tmp
+        }
+    };
 
     match args.command {
         Command::Playback(PlaybackCommand::Pause) => {
