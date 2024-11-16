@@ -5,6 +5,7 @@ authors = ["Ville Puuska"]
 edition = "2021"
 
 [dependencies]
+async-std = "1.13.0"
 base64 = "0.22.1"
 clap = { version = "4.5.20", features = ["cargo", "derive"] }
 dirs = "5.0.1"

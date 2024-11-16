@@ -73,15 +73,31 @@ struct PlayerResponse {
     #[serde(rename(deserialize = "item"))]
     song: Song,
     is_playing: bool,
+    context: Option<Context>,
 }
 
-pub async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+#[derive(Deserialize, Debug)]
+struct Context {
+    r#type: String,
+    href: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct Playlist {
+    name: String,
+    description: Option<String>,
+}
+
+pub async fn playback_show(
+    auth: &mut SpotifyAuth,
+    show_playlist: bool,
+) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player".to_string();
 
     let headers = auth_header(auth).await?;
 
     let client = reqwest::Client::new();
-    let res = client.get(url).headers(headers).send().await?;
+    let res = client.get(url).headers(headers.clone()).send().await?;
 
     let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
 
@@ -89,7 +105,20 @@ pub async fn playback_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
     if !response.is_playing {
         println!("(paused)");
     }
-    println!("Device:       {}", response.device);
+    println!("Running on:   {}", response.device);
+
+    if show_playlist && response.context.is_some() {
+        let ctx = response.context.unwrap();
+        let playlist_res = client.get(ctx.href).headers(headers).send().await?;
+        let playlist_response: Playlist =
+            serde_json::from_str(playlist_res.text().await?.as_str())?;
+
+        println!("Playing from: {} ({})", playlist_response.name, ctx.r#type);
+
+        if let Some(desc) = playlist_response.description {
+            println!(" - {}", desc);
+        }
+    };
 
     Ok(())
 }
