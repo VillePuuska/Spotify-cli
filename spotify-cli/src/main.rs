@@ -1,7 +1,6 @@
 mod auth;
 mod handlers;
 
-use async_std::task;
 use auth::SpotifyAuth;
 use clap::{Args, Parser, Subcommand};
 use handlers::*;
@@ -157,12 +156,12 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             // The API keeps returning the previously played song
             // without a bit of a sleep here. Not happy about this
             // but what can I do...
-            task::sleep(Duration::from_millis(300u64)).await;
+            tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
         Command::Playback(PlaybackCommand::Previous) => {
             playback_previous(&mut auth).await?;
-            task::sleep(Duration::from_millis(300u64)).await;
+            tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
         Command::Playback(PlaybackCommand::Restart) => {
