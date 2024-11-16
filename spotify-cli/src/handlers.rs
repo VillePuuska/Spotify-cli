@@ -116,7 +116,9 @@ pub async fn playback_show(
         println!("Playing from: {} ({})", playlist_response.name, ctx.r#type);
 
         if let Some(desc) = playlist_response.description {
-            println!(" - {}", desc);
+            if !desc.is_empty() {
+                println!(" - {}", desc);
+            }
         }
     };
 
