@@ -108,7 +108,13 @@ enum PlaylistCommand {
     List,
 
     /// Start playing a playlist
-    Play { uri: String },
+    Play { uri: String, index: Option<u8> },
+
+    /// Show the current playlist's tracks
+    Current,
+
+    /// Jump to song in current playlist
+    Jump { index: u8 },
 }
 
 #[tokio::main]
@@ -156,7 +162,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
 
     match args.command {
         Command::Playback(PlaybackCommand::Pause) => playback_pause(&mut auth).await?,
-        Command::Playback(PlaybackCommand::Play) => playback_play(&mut auth, None).await?,
+        Command::Playback(PlaybackCommand::Play) => playback_play(&mut auth, None, None).await?,
         Command::Playback(PlaybackCommand::Show) => playback_show(&mut auth, true).await?,
         Command::Playback(PlaybackCommand::Next) => {
             playback_next(&mut auth).await?;
@@ -176,11 +182,18 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
         Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
         Command::Playlist(PlaylistCommand::List) => playlist_list(&mut auth).await?,
-        Command::Playlist(PlaylistCommand::Play { uri }) => {
-            playback_play(&mut auth, Some(&uri)).await?;
+        Command::Playlist(PlaylistCommand::Play { uri, index }) => {
+            playback_play(&mut auth, Some(&uri), index).await?;
             tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
+        Command::Playlist(PlaylistCommand::Jump { index }) => {
+            let uri = get_current_playlist_uri(&mut auth).await?;
+            playback_play(&mut auth, Some(&uri), Some(index)).await?;
+            tokio::time::sleep(Duration::from_millis(500u64)).await;
+            playback_show(&mut auth, false).await?;
+        }
+        Command::Playlist(PlaylistCommand::Current) => playlist_current(&mut auth).await?,
         #[allow(unreachable_patterns)]
         _ => unimplemented!(),
     }

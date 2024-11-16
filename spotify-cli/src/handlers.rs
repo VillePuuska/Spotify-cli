@@ -1,7 +1,7 @@
 use super::auth::SpotifyAuth;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
-use std::{collections::HashMap, error, fmt::Display};
+use std::{error, fmt::Display};
 
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
@@ -80,12 +80,19 @@ struct PlayerResponse {
 struct Context {
     r#type: String,
     href: String,
+    uri: String,
 }
 
 #[derive(Deserialize, Debug)]
 struct PlaylistDescription {
     name: String,
     description: Option<String>,
+    tracks: Option<PlaylistTracks>,
+}
+
+#[derive(Deserialize, Debug)]
+struct TrackItem {
+    track: Song,
 }
 
 pub async fn playback_show(
@@ -151,6 +158,7 @@ pub async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error:
 pub async fn playback_play(
     auth: &mut SpotifyAuth,
     uri: Option<&str>,
+    index: Option<u8>,
 ) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player/play".to_string();
 
@@ -158,12 +166,25 @@ pub async fn playback_play(
 
     let client = reqwest::Client::new();
     let mut res_builder = client.put(url).headers(headers);
+    let mut map = serde_json::Map::new();
     if let Some(uri) = uri {
-        let mut map = HashMap::new();
-        map.insert("context_uri", uri);
-        res_builder = res_builder.json(&map);
-    } else {
+        map.insert(
+            "context_uri".to_string(),
+            serde_json::Value::String(uri.to_owned()),
+        );
+    }
+    if let Some(offset) = index {
+        let mut tmp = serde_json::Map::new();
+        tmp.insert(
+            "position".to_string(),
+            serde_json::Value::Number(offset.into()),
+        );
+        map.insert("offset".to_string(), serde_json::Value::Object(tmp.into()));
+    }
+    if map.is_empty() {
         res_builder = res_builder.header("content-length", 0);
+    } else {
+        res_builder = res_builder.json(&map);
     }
     let res = res_builder.send().await?;
 
@@ -342,6 +363,47 @@ struct TracksLink {
     total: u16,
 }
 
+#[derive(Deserialize, Debug)]
+struct PlaylistTracks {
+    #[allow(dead_code)]
+    next: Option<String>,
+    items: Vec<TrackItem>,
+}
+
+impl Display for PlaylistTracks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.items.len();
+        for (ind, track) in self.items.iter().take(n - 1).enumerate() {
+            writeln!(f, "#{ind} {}", track.track)?;
+        }
+        if let Some(last) = self.items.last() {
+            write!(f, "#{} {}", n - 1, last.track)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl PlaylistTracks {
+    pub fn print_tracks(&self, highlight: &str) {
+        let n = self.items.len();
+        for (ind, track) in self.items.iter().take(n - 1).enumerate() {
+            if track.track.name == highlight {
+                println!("\x1b[93m#{ind} {}\x1b[0m", track.track);
+            } else {
+                println!("#{ind} {}", track.track);
+            }
+        }
+        if let Some(last) = self.items.last() {
+            if last.track.name == highlight {
+                println!("\x1b[93m#{} {}\x1b[0m", n - 1, last.track);
+            } else {
+                println!("#{} {}", n - 1, last.track);
+            }
+        }
+    }
+}
+
 pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/playlists".to_string();
 
@@ -359,6 +421,68 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
     let response: PlaylistListResponse = serde_json::from_str(res.text().await?.as_str())?;
 
     println!("{response}");
+
+    Ok(())
+}
+
+pub async fn get_current_playlist_uri(
+    auth: &mut SpotifyAuth,
+) -> Result<String, Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client.get(url).headers(headers.clone()).send().await?;
+
+    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
+
+    match response.context {
+        Some(ctx) => Ok(ctx.uri),
+        None => Err("Not playing from a playlist.".to_string().into()),
+    }
+}
+
+pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client.get(url).headers(headers.clone()).send().await?;
+
+    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
+
+    let current_song = response.song.name;
+
+    match response.context {
+        Some(ctx) => {
+            let playlist_res = client.get(ctx.href).headers(headers).send().await?;
+
+            let playlist_response: PlaylistDescription =
+                serde_json::from_str(playlist_res.text().await?.as_str())?;
+
+            println!("{}", playlist_response.name);
+
+            if let Some(desc) = playlist_response.description {
+                if !desc.is_empty() {
+                    println!(" - {}", desc);
+                }
+            }
+
+            // TODO: pagination. `tracks.items` will "only" have the first 100 tracks;
+            // the rest need to be fetched using `tracks.next` URIs until it's None.
+            if let Some(tracks) = playlist_response.tracks {
+                println!();
+                tracks.print_tracks(&current_song);
+            } else {
+                println!("\nNot actually playing from a playlist currently.")
+            }
+            // TODO: maybe add a param to print all vs only some number of tracks _around_
+            // the current track?
+        }
+        None => println!("Not playing from a playlist currently."),
+    }
 
     Ok(())
 }
