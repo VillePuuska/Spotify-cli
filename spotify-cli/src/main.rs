@@ -49,6 +49,10 @@ enum Command {
     /// Control authentication tokens
     #[command(subcommand)]
     Auth(AuthCommand),
+
+    /// Control/see playlists
+    #[command(subcommand)]
+    Playlist(PlaylistCommand),
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -98,6 +102,15 @@ enum AuthCommand {
     Reset,
 }
 
+#[derive(Clone, Debug, Subcommand)]
+enum PlaylistCommand {
+    /// Show/list all my playlists
+    List,
+
+    /// Start playing a playlist
+    Play { uri: String },
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn error::Error>> {
     let args = App::parse();
@@ -142,15 +155,9 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     };
 
     match args.command {
-        Command::Playback(PlaybackCommand::Pause) => {
-            playback_pause(&mut auth).await?;
-        }
-        Command::Playback(PlaybackCommand::Play) => {
-            playback_play(&mut auth).await?;
-        }
-        Command::Playback(PlaybackCommand::Show) => {
-            playback_show(&mut auth, true).await?;
-        }
+        Command::Playback(PlaybackCommand::Pause) => playback_pause(&mut auth).await?,
+        Command::Playback(PlaybackCommand::Play) => playback_play(&mut auth, None).await?,
+        Command::Playback(PlaybackCommand::Show) => playback_show(&mut auth, true).await?,
         Command::Playback(PlaybackCommand::Next) => {
             playback_next(&mut auth).await?;
             // The API keeps returning the previously played song
@@ -164,14 +171,16 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
-        Command::Playback(PlaybackCommand::Restart) => {
-            playback_restart(&mut auth).await?;
-        }
-        Command::Queue(QueueCommand::Show { number }) => {
-            queue_show(&mut auth, number).await?;
-        }
+        Command::Playback(PlaybackCommand::Restart) => playback_restart(&mut auth).await?,
+        Command::Queue(QueueCommand::Show { number }) => queue_show(&mut auth, number).await?,
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
         Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
+        Command::Playlist(PlaylistCommand::List) => playlist_list(&mut auth).await?,
+        Command::Playlist(PlaylistCommand::Play { uri }) => {
+            playback_play(&mut auth, Some(&uri)).await?;
+            tokio::time::sleep(Duration::from_millis(300u64)).await;
+            playback_show(&mut auth, false).await?;
+        }
         #[allow(unreachable_patterns)]
         _ => unimplemented!(),
     }

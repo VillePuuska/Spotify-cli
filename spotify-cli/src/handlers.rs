@@ -1,7 +1,7 @@
 use super::auth::SpotifyAuth;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
-use std::{error, fmt::Display};
+use std::{collections::HashMap, error, fmt::Display};
 
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
@@ -83,7 +83,7 @@ struct Context {
 }
 
 #[derive(Deserialize, Debug)]
-struct Playlist {
+struct PlaylistDescription {
     name: String,
     description: Option<String>,
 }
@@ -110,7 +110,7 @@ pub async fn playback_show(
     if show_playlist && response.context.is_some() {
         let ctx = response.context.unwrap();
         let playlist_res = client.get(ctx.href).headers(headers).send().await?;
-        let playlist_response: Playlist =
+        let playlist_response: PlaylistDescription =
             serde_json::from_str(playlist_res.text().await?.as_str())?;
 
         println!("Playing from: {} ({})", playlist_response.name, ctx.r#type);
@@ -146,18 +146,24 @@ pub async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error:
     Ok(())
 }
 
-pub async fn playback_play(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+pub async fn playback_play(
+    auth: &mut SpotifyAuth,
+    uri: Option<&str>,
+) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player/play".to_string();
 
     let headers = auth_header(auth).await?;
 
     let client = reqwest::Client::new();
-    let res = client
-        .put(url)
-        .headers(headers)
-        .header("content-length", 0)
-        .send()
-        .await?;
+    let mut res_builder = client.put(url).headers(headers);
+    if let Some(uri) = uri {
+        let mut map = HashMap::new();
+        map.insert("context_uri", uri);
+        res_builder = res_builder.json(&map);
+    } else {
+        res_builder = res_builder.header("content-length", 0);
+    }
+    let res = res_builder.send().await?;
 
     let response = res.text().await?;
 
@@ -273,6 +279,84 @@ pub async fn queue_show(
             println!("{}{}", start, song);
         }
     }
+
+    Ok(())
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaylistListResponse {
+    #[allow(dead_code)]
+    next: Option<String>,
+    items: Vec<Playlist>,
+}
+
+impl Display for PlaylistListResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.items.len();
+        for playlist in self.items.iter().take(n - 1) {
+            writeln!(f, "{playlist}\n")?;
+        }
+        if let Some(last) = self.items.last() {
+            write!(f, "{}", last)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct Playlist {
+    description: Option<String>,
+    #[allow(dead_code)]
+    href: String,
+    uri: String,
+    name: String,
+    tracks: TracksLink,
+    public: Option<bool>,
+}
+
+impl Display for Playlist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+
+        if let Some(true) = &self.public {
+            write!(f, " (public)")?;
+        } else if let Some(false) = &self.public {
+            write!(f, " (private)")?;
+        }
+
+        if let Some(desc) = &self.description {
+            write!(f, ": {}", desc)?;
+        }
+
+        write!(f, "({} tracks) uri: {}", self.tracks.total, self.uri)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct TracksLink {
+    #[allow(dead_code)]
+    href: String,
+    total: u16,
+}
+
+pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/playlists".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    // TODO: pagination. Do I _actually_ care? When would I ever have >50 playlists created&liked?
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
+        .headers(headers)
+        .query(&[("limit", 50)])
+        .send()
+        .await?;
+
+    let response: PlaylistListResponse = serde_json::from_str(res.text().await?.as_str())?;
+
+    println!("{response}");
 
     Ok(())
 }
