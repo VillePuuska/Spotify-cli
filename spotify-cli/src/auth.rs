@@ -14,11 +14,8 @@ use std::{
 };
 
 #[derive(Deserialize, Debug)]
-#[allow(dead_code)]
 struct AuthenticationResponse {
     access_token: String,
-    token_type: String,
-    scope: String,
     expires_in: u64,
     refresh_token: Option<String>,
 }
@@ -66,15 +63,6 @@ impl SpotifyAuth {
         self.save()?;
 
         Ok(())
-    }
-
-    /// Stops saving & syncing credentials to a file.
-    ///
-    /// NOTE: this does not delete the file, if it already exists.
-    /// The filepath is simply set to `None` in the struct.
-    #[allow(dead_code)]
-    pub fn remove_file(&mut self) {
-        self.filepath = None;
     }
 
     /// Reads credentials from a file.
@@ -377,18 +365,6 @@ impl SpotifyAuth {
                 .to_string()
                 .into())
         }
-    }
-
-    #[cfg(debug_assertions)]
-    #[allow(dead_code)]
-    pub fn print_auth_info(&self) {
-        println!("client_id: {}", self.client_id);
-        println!("client_secret: {}", self.client_secret);
-        println!("access_token: {:?}", self.access_token);
-        println!("valid_until: {:?}", self.valid_until);
-        println!("refresh_token: {:?}", self.refresh_token);
-
-        println!();
     }
 }
 
