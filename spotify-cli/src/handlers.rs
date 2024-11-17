@@ -215,9 +215,9 @@ async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn er
 
     let res = client.get(url).headers(headers.clone()).send().await?;
 
-    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
+    let player_response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
 
-    Ok(response)
+    Ok(player_response)
 }
 
 async fn get_playlist_from_href(
@@ -231,38 +231,41 @@ async fn get_playlist_from_href(
     let headers = auth_header(auth).await?;
     let client = reqwest::Client::new();
 
-    let playlist_res = client
+    let res = client
         .get(href)
         .headers(headers)
         .query(&[("market", "from_token")])
         .send()
         .await?;
-    let playlist_response: PlaylistDescription =
-        serde_json::from_str(playlist_res.text().await?.as_str())?;
+    let playlist_description: PlaylistDescription =
+        serde_json::from_str(res.text().await?.as_str())?;
 
-    Ok(playlist_response)
+    Ok(playlist_description)
 }
 
 pub async fn playback_show(
     auth: &mut SpotifyAuth,
     show_playlist: bool,
 ) -> Result<(), Box<dyn error::Error>> {
-    let response = get_player(auth).await?;
+    let player_response = get_player(auth).await?;
 
-    println!("Current song: {}", response.song);
-    if !response.is_playing {
+    println!("Current song: {}", player_response.song);
+    if !player_response.is_playing {
         println!("(paused)");
     }
-    println!("Running on:   {}", response.device);
+    println!("Running on:   {}", player_response.device);
 
-    if show_playlist && response.context.is_some() {
-        let ctx = response.context.unwrap();
+    if show_playlist && player_response.context.is_some() {
+        let ctx = player_response.context.unwrap();
 
-        let playlist_response = get_playlist_from_href(auth, &ctx.href).await?;
+        let playlist_description = get_playlist_from_href(auth, &ctx.href).await?;
 
-        println!("Playing from: {} ({})", playlist_response.name, ctx.r#type);
+        println!(
+            "Playing from: {} ({})",
+            playlist_description.name, ctx.r#type
+        );
 
-        if let Some(desc) = playlist_response.description {
+        if let Some(desc) = playlist_description.description {
             if !desc.is_empty() {
                 println!(" - {}", desc);
             }
@@ -319,11 +322,11 @@ pub async fn playback_play(
             "position".to_string(),
             serde_json::Value::Number(offset.into()),
         );
-        map.insert("offset".to_string(), serde_json::Value::Object(tmp.into()));
+        map.insert("offset".to_string(), serde_json::Value::Object(tmp));
 
         if uri.is_none() {
-            let response = get_player(auth).await?;
-            match response.context {
+            let player_response = get_player(auth).await?;
+            match player_response.context {
                 Some(ctx) => {
                     if ctx.r#type != "playlist" {
                         return Err("Not playing from a playlist; can't jump to an index."
@@ -351,8 +354,8 @@ pub async fn playback_play(
     }
     let res = res_builder.send().await?;
 
+    #[cfg(debug_assertions)]
     let response = res.text().await?;
-
     #[cfg(debug_assertions)]
     let response_str = response.as_str();
     #[cfg(debug_assertions)]
@@ -374,8 +377,8 @@ pub async fn playback_next(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
         .send()
         .await?;
 
+    #[cfg(debug_assertions)]
     let response = res.text().await?;
-
     #[cfg(debug_assertions)]
     let response_str = response.as_str();
     #[cfg(debug_assertions)]
@@ -397,8 +400,8 @@ pub async fn playback_previous(auth: &mut SpotifyAuth) -> Result<(), Box<dyn err
         .send()
         .await?;
 
+    #[cfg(debug_assertions)]
     let response = res.text().await?;
-
     #[cfg(debug_assertions)]
     let response_str = response.as_str();
     #[cfg(debug_assertions)]
@@ -421,8 +424,8 @@ pub async fn playback_restart(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
         .send()
         .await?;
 
+    #[cfg(debug_assertions)]
     let response = res.text().await?;
-
     #[cfg(debug_assertions)]
     let response_str = response.as_str();
     #[cfg(debug_assertions)]
@@ -442,12 +445,18 @@ pub async fn queue_show(
     let client = reqwest::Client::new();
     let res = client.get(url).headers(headers).send().await?;
 
-    let response: PlayerQueueResponse = serde_json::from_str(res.text().await?.as_str())?;
+    let player_queue_response: PlayerQueueResponse =
+        serde_json::from_str(res.text().await?.as_str())?;
 
-    println!("Currently playing: {}", response.current);
+    println!("Currently playing: {}", player_queue_response.current);
     if number > 1 {
         let digits = number.to_string().len();
-        for (ind, song) in response.queued.iter().take(number - 1).enumerate() {
+        for (ind, song) in player_queue_response
+            .queued
+            .iter()
+            .take(number - 1)
+            .enumerate()
+        {
             let start = format!(
                 "#{}{} in queue:       ",
                 ind + 1,
@@ -475,31 +484,31 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
         .send()
         .await?;
 
-    let response: PlaylistResponse = serde_json::from_str(res.text().await?.as_str())?;
+    let playlist_response: PlaylistResponse = serde_json::from_str(res.text().await?.as_str())?;
 
-    println!("{response}");
+    println!("{playlist_response}");
 
     Ok(())
 }
 
 pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
-    let response = get_player(auth).await?;
+    let player_response = get_player(auth).await?;
 
-    let current_song = response.song.name;
+    let current_song = player_response.song.name;
 
-    match response.context {
+    match player_response.context {
         Some(ctx) => {
-            let playlist_response = get_playlist_from_href(auth, &ctx.href).await?;
+            let playlist_description = get_playlist_from_href(auth, &ctx.href).await?;
 
-            println!("{}", playlist_response.name);
+            println!("{}", playlist_description.name);
 
-            if let Some(desc) = playlist_response.description {
+            if let Some(desc) = playlist_description.description {
                 if !desc.is_empty() {
                     println!(" - {}", desc);
                 }
             }
 
-            if let Some(tracks) = playlist_response.tracks {
+            if let Some(tracks) = playlist_description.tracks {
                 println!();
                 tracks.print_tracks(&current_song);
             } else {

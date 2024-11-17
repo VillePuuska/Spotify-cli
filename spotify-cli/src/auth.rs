@@ -7,9 +7,7 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    error,
-    fmt::Display,
-    fs,
+    error, fs,
     io::{self, Read, Write},
     str::FromStr,
     time::SystemTime,
@@ -24,17 +22,6 @@ struct AuthenticationResponse {
     expires_in: u64,
     refresh_token: Option<String>,
 }
-
-#[derive(Debug)]
-pub struct GenericError(String);
-
-impl Display for GenericError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GenericError: {}", self.0)
-    }
-}
-
-impl error::Error for GenericError {}
 
 pub struct SpotifyAuth {
     client_id: String,
@@ -169,11 +156,11 @@ impl SpotifyAuth {
                     if let Some(access_token) = &self.access_token {
                         Ok(access_token.clone())
                     } else {
-                        Err(GenericError(
+                        Err(
                             "Broken auth state: access token is missing after a refresh."
-                                .to_string(),
+                                .to_string()
+                                .into(),
                         )
-                        .into())
                     }
                 } else {
                     Ok(access_token.clone())
@@ -192,10 +179,11 @@ impl SpotifyAuth {
 
                 Ok(access_token)
             }
-            _ => Err(GenericError(
-                "Broken auth state: some of the token fields are missing but not all.".to_string(),
-            )
-            .into()),
+            _ => Err(
+                "Broken auth state: some of the token fields are missing but not all."
+                    .to_string()
+                    .into(),
+            ),
         }
     }
 
@@ -269,10 +257,9 @@ impl SpotifyAuth {
         println!("\nToken: {token}\n");
 
         if &state != redirect_state {
-            Err(
-                GenericError("Invalid state! Something fishy might be going on.".to_string())
-                    .into(),
-            )
+            Err("Invalid state! Something fishy might be going on."
+                .to_string()
+                .into())
         } else {
             Ok((token, redirect_port))
         }
@@ -325,7 +312,7 @@ impl SpotifyAuth {
                     curr_time + auth_response.expires_in,
                 ))
             }
-            _ => Err(GenericError(res.text().await?).into()),
+            _ => Err(res.text().await?.into()),
         }
     }
 
@@ -383,13 +370,12 @@ impl SpotifyAuth {
 
                     Ok(())
                 }
-                _ => Err(GenericError(res.text().await?).into()),
+                _ => Err(res.text().await?.into()),
             }
         } else {
-            Err(
-                GenericError("Can't refresh token since refresh_token is missing.".to_string())
-                    .into(),
-            )
+            Err("Can't refresh token since refresh_token is missing."
+                .to_string()
+                .into())
         }
     }
 
@@ -429,5 +415,5 @@ fn get_free_port() -> Result<u16, Box<dyn error::Error>> {
             return Ok(port);
         }
     }
-    Err(GenericError("All ports unavailable.".to_string()).into())
+    Err("All ports unavailable.".to_string().into())
 }
