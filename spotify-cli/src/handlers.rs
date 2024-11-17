@@ -30,6 +30,7 @@ struct Song {
     album: Option<Album>,
     name: String,
     artists: Vec<Artist>,
+    is_playable: Option<bool>,
 }
 
 impl Display for Song {
@@ -386,15 +387,20 @@ impl Display for PlaylistTracks {
 
 impl PlaylistTracks {
     pub fn print_tracks(&self, highlight: &str) {
-        let n = self.items.len();
-        for (ind, track) in self.items.iter().take(n - 1).enumerate() {
+        let tracks: Vec<&TrackItem> = self
+            .items
+            .iter()
+            .filter(|track| track.track.is_playable != Some(false))
+            .collect();
+        let n = tracks.len();
+        for (ind, track) in tracks.iter().take(n - 1).enumerate() {
             if track.track.name == highlight {
                 println!("\x1b[93m#{ind} {}\x1b[0m", track.track);
             } else {
                 println!("#{ind} {}", track.track);
             }
         }
-        if let Some(last) = self.items.last() {
+        if let Some(last) = tracks.last() {
             if last.track.name == highlight {
                 println!("\x1b[93m#{} {}\x1b[0m", n - 1, last.track);
             } else {
@@ -457,7 +463,12 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
 
     match response.context {
         Some(ctx) => {
-            let playlist_res = client.get(ctx.href).headers(headers).send().await?;
+            let playlist_res = client
+                .get(ctx.href)
+                .headers(headers)
+                .query(&[("market", "from_token")])
+                .send()
+                .await?;
 
             let playlist_response: PlaylistDescription =
                 serde_json::from_str(playlist_res.text().await?.as_str())?;
