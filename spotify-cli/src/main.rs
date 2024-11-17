@@ -188,8 +188,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             playback_show(&mut auth, false).await?;
         }
         Command::Playlist(PlaylistCommand::Jump { index }) => {
-            let uri = get_current_playlist_uri(&mut auth).await?;
-            playback_play(&mut auth, Some(&uri), Some(index)).await?;
+            playback_play(&mut auth, None, Some(index)).await?;
             tokio::time::sleep(Duration::from_millis(500u64)).await;
             playback_show(&mut auth, false).await?;
         }

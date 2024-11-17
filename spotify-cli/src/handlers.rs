@@ -320,7 +320,30 @@ pub async fn playback_play(
             serde_json::Value::Number(offset.into()),
         );
         map.insert("offset".to_string(), serde_json::Value::Object(tmp.into()));
+
+        if uri.is_none() {
+            let response = get_player(auth).await?;
+            match response.context {
+                Some(ctx) => {
+                    if ctx.r#type != "playlist" {
+                        return Err("Not playing from a playlist; can't jump to an index."
+                            .to_string()
+                            .into());
+                    }
+                    map.insert(
+                        "context_uri".to_string(),
+                        serde_json::Value::String(ctx.uri.to_owned()),
+                    );
+                }
+                None => {
+                    return Err("Not playing from a playlist; can't jump to an index."
+                        .to_string()
+                        .into())
+                }
+            }
+        }
     }
+
     if map.is_empty() {
         res_builder = res_builder.header("content-length", 0);
     } else {
@@ -457,24 +480,6 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
     println!("{response}");
 
     Ok(())
-}
-
-pub async fn get_current_playlist_uri(
-    auth: &mut SpotifyAuth,
-) -> Result<String, Box<dyn error::Error>> {
-    let url = "https://api.spotify.com/v1/me/player".to_string();
-
-    let headers = auth_header(auth).await?;
-
-    let client = reqwest::Client::new();
-    let res = client.get(url).headers(headers.clone()).send().await?;
-
-    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
-
-    match response.context {
-        Some(ctx) => Ok(ctx.uri),
-        None => Err("Not playing from a playlist.".to_string().into()),
-    }
 }
 
 pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
