@@ -288,12 +288,10 @@ pub async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error:
         .send()
         .await?;
 
+    #[cfg(debug_assertions)]
     let response = res.text().await?;
-
     #[cfg(debug_assertions)]
-    let response_str = response.as_str();
-    #[cfg(debug_assertions)]
-    println!("{response_str}");
+    println!("{response}");
 
     Ok(())
 }
@@ -357,9 +355,7 @@ pub async fn playback_play(
     #[cfg(debug_assertions)]
     let response = res.text().await?;
     #[cfg(debug_assertions)]
-    let response_str = response.as_str();
-    #[cfg(debug_assertions)]
-    println!("{response_str}");
+    println!("{response}");
 
     Ok(())
 }
@@ -380,9 +376,7 @@ pub async fn playback_next(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
     #[cfg(debug_assertions)]
     let response = res.text().await?;
     #[cfg(debug_assertions)]
-    let response_str = response.as_str();
-    #[cfg(debug_assertions)]
-    println!("{response_str}");
+    println!("{response}");
 
     Ok(())
 }
@@ -403,9 +397,7 @@ pub async fn playback_previous(auth: &mut SpotifyAuth) -> Result<(), Box<dyn err
     #[cfg(debug_assertions)]
     let response = res.text().await?;
     #[cfg(debug_assertions)]
-    let response_str = response.as_str();
-    #[cfg(debug_assertions)]
-    println!("{response_str}");
+    println!("{response}");
 
     Ok(())
 }
@@ -427,9 +419,7 @@ pub async fn playback_restart(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
     #[cfg(debug_assertions)]
     let response = res.text().await?;
     #[cfg(debug_assertions)]
-    let response_str = response.as_str();
-    #[cfg(debug_assertions)]
-    println!("{response_str}");
+    println!("{response}");
 
     Ok(())
 }
