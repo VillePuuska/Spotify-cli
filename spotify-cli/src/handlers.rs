@@ -92,22 +92,162 @@ struct PlaylistDescription {
 }
 
 #[derive(Deserialize, Debug)]
+struct PlaylistResponse {
+    #[allow(dead_code)]
+    next: Option<String>,
+    items: Vec<Playlist>,
+}
+
+impl Display for PlaylistResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.items.len();
+        for playlist in self.items.iter().take(n - 1) {
+            writeln!(f, "{playlist}\n")?;
+        }
+        if let Some(last) = self.items.last() {
+            write!(f, "{}", last)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct Playlist {
+    description: Option<String>,
+    #[allow(dead_code)]
+    href: String,
+    uri: String,
+    name: String,
+    tracks: TracksLink,
+    public: Option<bool>,
+}
+
+impl Display for Playlist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+
+        if let Some(true) = &self.public {
+            write!(f, " (public)")?;
+        } else if let Some(false) = &self.public {
+            write!(f, " (private)")?;
+        }
+
+        if let Some(desc) = &self.description {
+            write!(f, ": {}", desc)?;
+        }
+
+        write!(f, "({} tracks) uri: {}", self.tracks.total, self.uri)
+    }
+}
+
+#[derive(Deserialize, Debug)]
+struct TracksLink {
+    #[allow(dead_code)]
+    href: String,
+    total: u16,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaylistTracks {
+    #[allow(dead_code)]
+    next: Option<String>,
+    items: Vec<TrackItem>,
+}
+
+impl Display for PlaylistTracks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let n = self.items.len();
+        for (ind, track) in self.items.iter().take(n - 1).enumerate() {
+            writeln!(f, "#{ind} {}", track.track)?;
+        }
+        if let Some(last) = self.items.last() {
+            write!(f, "#{} {}", n - 1, last.track)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl PlaylistTracks {
+    pub fn print_tracks(&self, highlight: &str) {
+        let tracks: Vec<&TrackItem> = self
+            .items
+            .iter()
+            .filter(|track| track.track.is_playable != Some(false))
+            .collect();
+        let n = tracks.len();
+        for (ind, track) in tracks.iter().take(n - 1).enumerate() {
+            if track.track.name == highlight {
+                println!("\x1b[93m#{ind} {}\x1b[0m", track.track);
+            } else {
+                println!("#{ind} {}", track.track);
+            }
+        }
+        if let Some(last) = tracks.last() {
+            if last.track.name == highlight {
+                println!("\x1b[93m#{} {}\x1b[0m", n - 1, last.track);
+            } else {
+                println!("#{} {}", n - 1, last.track);
+            }
+        }
+    }
+}
+
+#[derive(Deserialize, Debug)]
 struct TrackItem {
     track: Song,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlayerQueueResponse {
+    #[serde(rename(deserialize = "currently_playing"))]
+    current: Song,
+    #[serde(rename(deserialize = "queue"))]
+    queued: Vec<Song>,
+}
+
+async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me/player".to_string();
+
+    let headers = auth_header(auth).await?;
+    let client = reqwest::Client::new();
+
+    let res = client.get(url).headers(headers.clone()).send().await?;
+
+    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
+
+    Ok(response)
+}
+
+async fn get_playlist_from_href(
+    auth: &mut SpotifyAuth,
+    href: &str,
+) -> Result<PlaylistDescription, Box<dyn error::Error>> {
+    // TODO: pagination. `tracks.items` will "only" have the first 100 tracks;
+    // the rest need to be fetched using `tracks.next` URIs until it's None.
+    // Need to add a param to specify if all tracks are actually needed/wanted.
+
+    let headers = auth_header(auth).await?;
+    let client = reqwest::Client::new();
+
+    let playlist_res = client
+        .get(href)
+        .headers(headers)
+        .query(&[("market", "from_token")])
+        .send()
+        .await?;
+    let playlist_response: PlaylistDescription =
+        serde_json::from_str(playlist_res.text().await?.as_str())?;
+
+    Ok(playlist_response)
 }
 
 pub async fn playback_show(
     auth: &mut SpotifyAuth,
     show_playlist: bool,
 ) -> Result<(), Box<dyn error::Error>> {
-    let url = "https://api.spotify.com/v1/me/player".to_string();
-
-    let headers = auth_header(auth).await?;
-
-    let client = reqwest::Client::new();
-    let res = client.get(url).headers(headers.clone()).send().await?;
-
-    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
+    let response = get_player(auth).await?;
 
     println!("Current song: {}", response.song);
     if !response.is_playing {
@@ -117,9 +257,8 @@ pub async fn playback_show(
 
     if show_playlist && response.context.is_some() {
         let ctx = response.context.unwrap();
-        let playlist_res = client.get(ctx.href).headers(headers).send().await?;
-        let playlist_response: PlaylistDescription =
-            serde_json::from_str(playlist_res.text().await?.as_str())?;
+
+        let playlist_response = get_playlist_from_href(auth, &ctx.href).await?;
 
         println!("Playing from: {} ({})", playlist_response.name, ctx.r#type);
 
@@ -269,14 +408,6 @@ pub async fn playback_restart(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
     Ok(())
 }
 
-#[derive(Deserialize, Debug)]
-struct PlayerQueueResponse {
-    #[serde(rename(deserialize = "currently_playing"))]
-    current: Song,
-    #[serde(rename(deserialize = "queue"))]
-    queued: Vec<Song>,
-}
-
 pub async fn queue_show(
     auth: &mut SpotifyAuth,
     number: usize,
@@ -307,109 +438,6 @@ pub async fn queue_show(
     Ok(())
 }
 
-#[derive(Deserialize, Debug)]
-struct PlaylistListResponse {
-    #[allow(dead_code)]
-    next: Option<String>,
-    items: Vec<Playlist>,
-}
-
-impl Display for PlaylistListResponse {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n = self.items.len();
-        for playlist in self.items.iter().take(n - 1) {
-            writeln!(f, "{playlist}\n")?;
-        }
-        if let Some(last) = self.items.last() {
-            write!(f, "{}", last)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct Playlist {
-    description: Option<String>,
-    #[allow(dead_code)]
-    href: String,
-    uri: String,
-    name: String,
-    tracks: TracksLink,
-    public: Option<bool>,
-}
-
-impl Display for Playlist {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)?;
-
-        if let Some(true) = &self.public {
-            write!(f, " (public)")?;
-        } else if let Some(false) = &self.public {
-            write!(f, " (private)")?;
-        }
-
-        if let Some(desc) = &self.description {
-            write!(f, ": {}", desc)?;
-        }
-
-        write!(f, "({} tracks) uri: {}", self.tracks.total, self.uri)
-    }
-}
-
-#[derive(Deserialize, Debug)]
-struct TracksLink {
-    #[allow(dead_code)]
-    href: String,
-    total: u16,
-}
-
-#[derive(Deserialize, Debug)]
-struct PlaylistTracks {
-    #[allow(dead_code)]
-    next: Option<String>,
-    items: Vec<TrackItem>,
-}
-
-impl Display for PlaylistTracks {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n = self.items.len();
-        for (ind, track) in self.items.iter().take(n - 1).enumerate() {
-            writeln!(f, "#{ind} {}", track.track)?;
-        }
-        if let Some(last) = self.items.last() {
-            write!(f, "#{} {}", n - 1, last.track)
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl PlaylistTracks {
-    pub fn print_tracks(&self, highlight: &str) {
-        let tracks: Vec<&TrackItem> = self
-            .items
-            .iter()
-            .filter(|track| track.track.is_playable != Some(false))
-            .collect();
-        let n = tracks.len();
-        for (ind, track) in tracks.iter().take(n - 1).enumerate() {
-            if track.track.name == highlight {
-                println!("\x1b[93m#{ind} {}\x1b[0m", track.track);
-            } else {
-                println!("#{ind} {}", track.track);
-            }
-        }
-        if let Some(last) = tracks.last() {
-            if last.track.name == highlight {
-                println!("\x1b[93m#{} {}\x1b[0m", n - 1, last.track);
-            } else {
-                println!("#{} {}", n - 1, last.track);
-            }
-        }
-    }
-}
-
 pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/playlists".to_string();
 
@@ -424,7 +452,7 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
         .send()
         .await?;
 
-    let response: PlaylistListResponse = serde_json::from_str(res.text().await?.as_str())?;
+    let response: PlaylistResponse = serde_json::from_str(res.text().await?.as_str())?;
 
     println!("{response}");
 
@@ -450,28 +478,13 @@ pub async fn get_current_playlist_uri(
 }
 
 pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
-    let url = "https://api.spotify.com/v1/me/player".to_string();
-
-    let headers = auth_header(auth).await?;
-
-    let client = reqwest::Client::new();
-    let res = client.get(url).headers(headers.clone()).send().await?;
-
-    let response: PlayerResponse = serde_json::from_str(res.text().await?.as_str())?;
+    let response = get_player(auth).await?;
 
     let current_song = response.song.name;
 
     match response.context {
         Some(ctx) => {
-            let playlist_res = client
-                .get(ctx.href)
-                .headers(headers)
-                .query(&[("market", "from_token")])
-                .send()
-                .await?;
-
-            let playlist_response: PlaylistDescription =
-                serde_json::from_str(playlist_res.text().await?.as_str())?;
+            let playlist_response = get_playlist_from_href(auth, &ctx.href).await?;
 
             println!("{}", playlist_response.name);
 
@@ -481,8 +494,6 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
                 }
             }
 
-            // TODO: pagination. `tracks.items` will "only" have the first 100 tracks;
-            // the rest need to be fetched using `tracks.next` URIs until it's None.
             if let Some(tracks) = playlist_response.tracks {
                 println!();
                 tracks.print_tracks(&current_song);
