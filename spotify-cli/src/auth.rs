@@ -144,11 +144,7 @@ impl SpotifyAuth {
                     if let Some(access_token) = &self.access_token {
                         Ok(access_token.clone())
                     } else {
-                        Err(
-                            "Broken auth state: access token is missing after a refresh."
-                                .to_string()
-                                .into(),
-                        )
+                        Err("Broken auth state: access token is missing after a refresh.".into())
                     }
                 } else {
                     Ok(access_token.clone())
@@ -167,11 +163,7 @@ impl SpotifyAuth {
 
                 Ok(access_token)
             }
-            _ => Err(
-                "Broken auth state: some of the token fields are missing but not all."
-                    .to_string()
-                    .into(),
-            ),
+            _ => Err("Broken auth state: some of the token fields are missing but not all.".into()),
         }
     }
 
@@ -245,9 +237,7 @@ impl SpotifyAuth {
         println!("\nToken: {token}\n");
 
         if &state != redirect_state {
-            Err("Invalid state! Something fishy might be going on."
-                .to_string()
-                .into())
+            Err("Invalid state! Something fishy might be going on.".into())
         } else {
             Ok((token, redirect_port))
         }
@@ -361,9 +351,7 @@ impl SpotifyAuth {
                 _ => Err(res.text().await?.into()),
             }
         } else {
-            Err("Can't refresh token since refresh_token is missing."
-                .to_string()
-                .into())
+            Err("Can't refresh token since refresh_token is missing.".into())
         }
     }
 }
@@ -391,5 +379,5 @@ fn get_free_port() -> Result<u16, Box<dyn error::Error>> {
             return Ok(port);
         }
     }
-    Err("All ports unavailable.".to_string().into())
+    Err("All ports unavailable.".into())
 }
