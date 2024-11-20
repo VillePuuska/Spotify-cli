@@ -38,25 +38,9 @@ struct Options {
 
 #[derive(Clone, Debug, Subcommand)]
 enum Command {
-    /// Control/see active playback
-    #[command(subcommand)]
-    Playback(PlaybackCommand),
+    /// Show current playback
+    Show,
 
-    /// Control/see current queue or create new queue from recommendations
-    #[command(subcommand)]
-    Queue(QueueCommand),
-
-    /// Control authentication tokens
-    #[command(subcommand)]
-    Auth(AuthCommand),
-
-    /// Control/see playlists
-    #[command(subcommand)]
-    Playlist(PlaylistCommand),
-}
-
-#[derive(Clone, Debug, Subcommand)]
-enum PlaybackCommand {
     /// Pause playback
     #[command(visible_alias = "stop")]
     Pause,
@@ -64,10 +48,6 @@ enum PlaybackCommand {
     /// Start/resume playback
     #[command(visible_alias = "start")]
     Play,
-
-    /// Show current playback
-    #[command(visible_alias = "current")]
-    Show,
 
     /// Play next track
     #[command(visible_alias = "forward")]
@@ -80,17 +60,27 @@ enum PlaybackCommand {
     /// Restart current track
     #[command(visible_alias = "rewind")]
     Restart,
-}
 
-#[derive(Clone, Debug, Subcommand)]
-enum QueueCommand {
+    /// Show the current playlist's tracks
+    Current,
+
+    /// Jump to song in current playlist
+    Jump { offset: u8 },
+
     /// Show current queue
-    #[command(visible_alias = "current")]
-    Show {
+    Queue {
         /// Number of songs in the queue to show (including the current song).
         #[arg(default_value = "5")]
         number: usize,
     },
+
+    /// Control/see playlists (see subcommands)
+    #[command(subcommand)]
+    Playlist(PlaylistCommand),
+
+    /// Control authentication tokens (see subcommands)
+    #[command(subcommand)]
+    Auth(AuthCommand),
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -109,12 +99,6 @@ enum PlaylistCommand {
 
     /// Start playing a playlist
     Play { uri: String, index: Option<u8> },
-
-    /// Show the current playlist's tracks
-    Current,
-
-    /// Jump to song in current playlist
-    Jump { index: u8 },
 }
 
 #[tokio::main]
@@ -161,10 +145,10 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
     };
 
     match args.command {
-        Command::Playback(PlaybackCommand::Pause) => playback_pause(&mut auth).await?,
-        Command::Playback(PlaybackCommand::Play) => playback_play(&mut auth, None, None).await?,
-        Command::Playback(PlaybackCommand::Show) => playback_show(&mut auth, true).await?,
-        Command::Playback(PlaybackCommand::Next) => {
+        Command::Show => playback_show(&mut auth, true).await?,
+        Command::Pause => playback_pause(&mut auth).await?,
+        Command::Play => playback_play(&mut auth, None, None).await?,
+        Command::Next => {
             playback_next(&mut auth).await?;
             // The API keeps returning the previously played song
             // without a bit of a sleep here. Not happy about this
@@ -172,27 +156,27 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
-        Command::Playback(PlaybackCommand::Previous) => {
+        Command::Previous => {
             playback_previous(&mut auth).await?;
             tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
-        Command::Playback(PlaybackCommand::Restart) => playback_restart(&mut auth).await?,
-        Command::Queue(QueueCommand::Show { number }) => queue_show(&mut auth, number).await?,
-        Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
-        Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
+        Command::Restart => playback_restart(&mut auth).await?,
+        Command::Current => playlist_current(&mut auth).await?,
+        Command::Jump { offset } => {
+            playback_play(&mut auth, None, Some(offset)).await?;
+            tokio::time::sleep(Duration::from_millis(500u64)).await;
+            playback_show(&mut auth, false).await?;
+        }
+        Command::Queue { number } => queue_show(&mut auth, number).await?,
         Command::Playlist(PlaylistCommand::List) => playlist_list(&mut auth).await?,
         Command::Playlist(PlaylistCommand::Play { uri, index }) => {
             playback_play(&mut auth, Some(&uri), index).await?;
             tokio::time::sleep(Duration::from_millis(300u64)).await;
             playback_show(&mut auth, false).await?;
         }
-        Command::Playlist(PlaylistCommand::Jump { index }) => {
-            playback_play(&mut auth, None, Some(index)).await?;
-            tokio::time::sleep(Duration::from_millis(500u64)).await;
-            playback_show(&mut auth, false).await?;
-        }
-        Command::Playlist(PlaylistCommand::Current) => playlist_current(&mut auth).await?,
+        Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
+        Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
         #[allow(unreachable_patterns)]
         _ => unimplemented!(),
     }
