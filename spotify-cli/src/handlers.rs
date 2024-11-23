@@ -5,7 +5,7 @@ use reqwest::{
 };
 use serde::Deserialize;
 use serde_json::Value;
-use std::{error, fmt::Display};
+use std::{env, error, fmt::Display, io};
 
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
@@ -209,6 +209,16 @@ struct PlayerQueueResponse {
     current: Option<Song>,
     #[serde(rename(deserialize = "queue"))]
     queued: Vec<Song>,
+}
+
+#[derive(Deserialize, Debug)]
+struct User {
+    id: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct PlaylistCreateResponse {
+    id: String,
 }
 
 async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn error::Error>> {
@@ -583,7 +593,8 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
 }
 
 fn get_managed_playlist_id() -> Result<String, Box<dyn error::Error>> {
-    unimplemented!()
+    env::var("SPOTIFY_CLI_MANAGED_PLAYLIST_ID")
+        .map_err(|_| "The env variable SPOTIFY_CLI_MANAGED_PLAYLIST_ID is not set. If a managed playlist has not been created yet, run 'recommendation init'; if it has been created then set the env variable with the id of the playlist.".into())
 }
 
 pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
@@ -619,8 +630,80 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
 pub async fn recommendation_init(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     if let Ok(id) = get_managed_playlist_id() {
         println!("The env variable for a managed playlist is already set to: {id}");
-        println!("Do you want to create a new managed playlist anyway?");
+        println!("Do you want to create a new managed playlist anyway? (Y/n)");
+
+        let mut user_response = String::new();
+        io::stdin().read_line(&mut user_response)?;
+        user_response = user_response.trim().to_lowercase();
+
+        if !(user_response.is_empty() || user_response.starts_with("y")) {
+            println!("Ok, NOT creating a new playlist. Exiting.");
+            return Ok(());
+        }
     }
 
-    unimplemented!()
+    let user = get_user(auth).await?;
+
+    #[cfg(debug_assertions)]
+    println!("Creating playlist for user with id: {}", user.id);
+
+    let url = format!("https://api.spotify.com/v1/users/{}/playlists", user.id);
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let mut res_builder = client.post(url).headers(headers);
+    let mut map = serde_json::Map::new();
+    map.insert(
+        "name".to_string(),
+        serde_json::Value::from("CLI managed playlist"),
+    );
+    map.insert("public".to_string(), serde_json::Value::from(false));
+    map.insert(
+        "description".to_string(),
+        serde_json::Value::from("This playlist is created and managed by a CLI tool to hold generated recommendations. Do not touch!"),
+    );
+    res_builder = res_builder.json(&map);
+    let res = res_builder.send().await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let playlist_create_response: PlaylistCreateResponse =
+        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    println!("Managed playlist created.");
+    println!("The API does not allow setting the playlist as fully private; you might want to do this from the app now.");
+    println!();
+    println!("You now need to set the following environment variable:");
+    println!(
+        "export SPOTIFY_CLI_MANAGED_PLAYLIST_ID={}",
+        playlist_create_response.id
+    );
+
+    Ok(())
+}
+
+async fn get_user(auth: &mut SpotifyAuth) -> Result<User, Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/me".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client.get(url).headers(headers).send().await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let user_response: User = serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    Ok(user_response)
 }

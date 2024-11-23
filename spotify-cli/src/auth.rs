@@ -183,7 +183,7 @@ impl SpotifyAuth {
                 ("state", &state),
                 (
                     "scope",
-                    &"user-read-playback-state user-read-currently-playing user-modify-playback-state playlist-read-private"
+                    &"user-read-playback-state user-read-currently-playing user-modify-playback-state playlist-read-private playlist-modify-private"
                         .to_string(),
                 ),
             ],
