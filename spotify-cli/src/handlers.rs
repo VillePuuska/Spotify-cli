@@ -229,6 +229,28 @@ struct PlaylistCreateResponse {
     id: String,
 }
 
+#[derive(Deserialize, Debug)]
+struct FindResponse {
+    tracks: Option<TracksObject>,
+    artists: Option<ArtistsObject>,
+}
+
+#[derive(Deserialize, Debug)]
+struct TracksObject {
+    items: Vec<Song>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ArtistsObject {
+    items: Vec<Artist>,
+}
+
+#[derive(Deserialize, Debug)]
+struct TrackOrArtist {
+    name: String,
+    id: String,
+}
+
 async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player".to_string();
 
@@ -674,7 +696,25 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
         user_response = user_response.trim().to_lowercase();
 
         match user_response.as_str() {
-            "0" => unimplemented!(),
+            "0" => {
+                let songs = get_recommendations(auth, &recommendation_parameters).await?;
+
+                println!("Got the following recommendations:");
+                for song in songs {
+                    println!("{song}");
+                }
+
+                println!("\nAccept this list or keep trying? (y to accept, N to keep trying)");
+                let mut user_response = String::new();
+                io::stdin().read_line(&mut user_response)?;
+                user_response = user_response.trim().to_lowercase();
+
+                if user_response.starts_with("y") {
+                    break;
+                } else {
+                    println!("Ok, going again.");
+                }
+            }
             "1" => {
                 println!("Artist name?");
                 let mut new_artist = String::new();
@@ -736,25 +776,42 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
 }
 
 #[derive(Deserialize, Debug)]
-struct FindResponse {
-    tracks: Option<TracksObject>,
-    artists: Option<ArtistsObject>,
+struct RecommendationResponse {
+    tracks: Vec<Song>,
 }
 
-#[derive(Deserialize, Debug)]
-struct TracksObject {
-    items: Vec<Song>,
-}
+async fn get_recommendations(
+    auth: &mut SpotifyAuth,
+    params: &RecommendationParameters,
+) -> Result<Vec<Song>, Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/recommendations".to_string();
 
-#[derive(Deserialize, Debug)]
-struct ArtistsObject {
-    items: Vec<Artist>,
-}
+    let headers = auth_header(auth).await?;
 
-#[derive(Deserialize, Debug)]
-struct TrackOrArtist {
-    name: String,
-    id: String,
+    let client = reqwest::Client::new();
+    let mut request_builder = client.get(url).headers(headers).query(&[("limit", 50)]);
+    if !params.seed_artists.is_empty() {
+        request_builder = request_builder.query(&[("seed_artists", params.seed_artists.join(","))])
+    }
+    if !params.seed_genres.is_empty() {
+        request_builder = request_builder.query(&[("seed_genres", params.seed_genres.join(","))])
+    }
+    if !params.seed_tracks.is_empty() {
+        request_builder = request_builder.query(&[("seed_tracks", params.seed_tracks.join(","))])
+    }
+    let res = request_builder.send().await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let recommendation_response: RecommendationResponse =
+        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    Ok(recommendation_response.tracks)
 }
 
 async fn find(
