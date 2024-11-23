@@ -81,6 +81,10 @@ enum Command {
     /// Control authentication tokens (see subcommands)
     #[command(subcommand)]
     Auth(AuthCommand),
+
+    /// Recommendations commands (see subcommands)
+    #[command(subcommand, visible_alias = "rec")]
+    Recommendation(RecommendationCommand),
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -99,6 +103,24 @@ enum PlaylistCommand {
 
     /// Start playing a playlist
     Play { uri: String, index: Option<u8> },
+}
+
+#[derive(Clone, Debug, Subcommand)]
+enum RecommendationCommand {
+    /// Show latest recommendation list
+    Show,
+
+    /// Start playing the latest recommendation list
+    Play { index: Option<u8> },
+
+    /// Save the latest list of recommendations to a playlist
+    Save { name: String },
+
+    /// Generate a new list of recommendations
+    Generate,
+
+    /// Creates a new playlist to be managed by this tool and prints the corresponding env variable
+    Init,
 }
 
 #[tokio::main]
@@ -177,6 +199,21 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         }
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
         Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
+        Command::Recommendation(RecommendationCommand::Show) => {
+            recommendation_show(&mut auth).await?
+        }
+        Command::Recommendation(RecommendationCommand::Play { index }) => {
+            recommendation_play(&mut auth, index).await?
+        }
+        Command::Recommendation(RecommendationCommand::Save { name }) => {
+            recommendation_save(&mut auth, name).await?
+        }
+        Command::Recommendation(RecommendationCommand::Generate) => {
+            recommendation_generate(&mut auth).await?
+        }
+        Command::Recommendation(RecommendationCommand::Init) => {
+            recommendation_init(&mut auth).await?
+        }
         #[allow(unreachable_patterns)]
         _ => unimplemented!(),
     }

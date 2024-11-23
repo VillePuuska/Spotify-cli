@@ -581,3 +581,46 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
 
     Ok(())
 }
+
+fn get_managed_playlist_id() -> Result<String, Box<dyn error::Error>> {
+    unimplemented!()
+}
+
+pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let managed_list = get_managed_playlist_id()?;
+
+    unimplemented!()
+}
+
+pub async fn recommendation_play(
+    auth: &mut SpotifyAuth,
+    index: Option<u8>,
+) -> Result<(), Box<dyn error::Error>> {
+    let managed_list = get_managed_playlist_id()?;
+
+    unimplemented!()
+}
+
+pub async fn recommendation_save(
+    auth: &mut SpotifyAuth,
+    name: String,
+) -> Result<(), Box<dyn error::Error>> {
+    let managed_list = get_managed_playlist_id()?;
+
+    unimplemented!()
+}
+
+pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    let managed_list = get_managed_playlist_id()?;
+
+    unimplemented!()
+}
+
+pub async fn recommendation_init(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+    if let Ok(id) = get_managed_playlist_id() {
+        println!("The env variable for a managed playlist is already set to: {id}");
+        println!("Do you want to create a new managed playlist anyway?");
+    }
+
+    unimplemented!()
+}
