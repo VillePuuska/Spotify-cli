@@ -183,7 +183,7 @@ impl Display for PlaylistTracks {
 }
 
 impl PlaylistTracks {
-    pub fn print_tracks(&self, highlight: &str) {
+    pub fn print_tracks(&self, highlight: Option<&str>) {
         let tracks: Vec<&TrackItem> = self
             .items
             .iter()
@@ -191,14 +191,14 @@ impl PlaylistTracks {
             .collect();
         let n = tracks.len();
         for (ind, track) in tracks.iter().take(n - 1).enumerate() {
-            if track.track.name == highlight {
+            if highlight.is_some() && track.track.name == highlight.unwrap() {
                 println!("\x1b[93m#{ind} {}\x1b[0m", track.track);
             } else {
                 println!("#{ind} {}", track.track);
             }
         }
         if let Some(last) = tracks.last() {
-            if last.track.name == highlight {
+            if highlight.is_some() && last.track.name == highlight.unwrap() {
                 println!("\x1b[93m#{} {}\x1b[0m", n - 1, last.track);
             } else {
                 println!("#{} {}", n - 1, last.track);
@@ -257,6 +257,27 @@ struct RecommendationResponse {
     tracks: Vec<Song>,
 }
 
+#[derive(Deserialize, Debug, Default, Serialize)]
+struct RecommendationParameters {
+    limit: u8,
+    artists: Vec<String>,
+    seed_artists: Vec<String>,
+    genres: Vec<String>,
+    seed_genres: Vec<String>,
+    tracks: Vec<String>,
+    seed_tracks: Vec<String>,
+}
+
+impl Display for RecommendationParameters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Artists: {:?}", self.artists)?;
+        writeln!(f, "Genres: {:?}", self.genres)?;
+        writeln!(f, "Tracks: {:?}", self.tracks)?;
+
+        Ok(())
+    }
+}
+
 async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player".to_string();
 
@@ -295,6 +316,38 @@ async fn get_playlist_from_href(
 
     let res = client
         .get(href)
+        .headers(headers)
+        .query(&[("market", "from_token")])
+        .send()
+        .await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let playlist_description: PlaylistDescription =
+        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    Ok(playlist_description)
+}
+
+async fn get_playlist_from_id(
+    auth: &mut SpotifyAuth,
+    id: &str,
+) -> Result<PlaylistDescription, Box<dyn error::Error>> {
+    // TODO: pagination. `tracks.items` will "only" have the first 100 tracks;
+    // the rest need to be fetched using `tracks.next` URIs until it's None.
+    // Need to add a param to specify if all tracks are actually needed/wanted.
+    let url = format!("https://api.spotify.com/v1/playlists/{id}");
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client
+        .get(url)
         .headers(headers)
         .query(&[("market", "from_token")])
         .send()
@@ -615,7 +668,7 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
 
             if let Some(tracks) = playlist_description.tracks {
                 println!();
-                tracks.print_tracks(&current_song);
+                tracks.print_tracks(Some(&current_song));
             } else {
                 println!("\nNot actually playing from a playlist currently.")
             }
@@ -636,7 +689,24 @@ fn get_managed_playlist_id() -> Result<String, Box<dyn error::Error>> {
 pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
-    unimplemented!()
+    let playlist_description = get_playlist_from_id(auth, &managed_list).await?;
+
+    println!("{}", playlist_description.name);
+
+    if let Some(desc) = playlist_description.description {
+        if !desc.is_empty() {
+            println!(" - {}", desc);
+        }
+    }
+
+    if let Some(tracks) = playlist_description.tracks {
+        println!();
+        tracks.print_tracks(None);
+    } else {
+        println!("\nNo songs in the list.");
+    }
+
+    Ok(())
 }
 
 pub async fn recommendation_play(
@@ -655,42 +725,19 @@ pub async fn recommendation_play(
 }
 
 pub async fn recommendation_save(
-    auth: &mut SpotifyAuth,
-    name: String,
+    _: &mut SpotifyAuth,
+    _: String,
 ) -> Result<(), Box<dyn error::Error>> {
-    let managed_list = get_managed_playlist_id()?;
-
     unimplemented!()
-}
-
-#[derive(Deserialize, Debug, Default, Serialize)]
-struct RecommendationParameters {
-    limit: u8,
-    market: String,
-    artists: Vec<String>,
-    seed_artists: Vec<String>,
-    genres: Vec<String>,
-    seed_genres: Vec<String>,
-    tracks: Vec<String>,
-    seed_tracks: Vec<String>,
-}
-
-impl Display for RecommendationParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Artists: {:?}", self.artists)?;
-        writeln!(f, "Genres: {:?}", self.genres)?;
-        writeln!(f, "Tracks: {:?}", self.tracks)?;
-
-        Ok(())
-    }
 }
 
 pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
-    let mut recommendation_parameters = RecommendationParameters::default();
-    recommendation_parameters.limit = 20;
-    recommendation_parameters.market = "from_token".to_string();
+    let mut recommendation_parameters = RecommendationParameters {
+        limit: 20,
+        ..Default::default()
+    };
 
     let mut user_response: String = String::new();
     while !user_response.starts_with("q") {
@@ -761,12 +808,12 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                 by_artist = by_artist.trim().to_lowercase();
                 println!();
 
-                let artist: Option<&str>;
-                if !by_artist.is_empty() {
-                    artist = Some(&by_artist)
+                let artist: Option<&str> = if !by_artist.is_empty() {
+                    Some(&by_artist)
                 } else {
-                    artist = None
-                }
+                    None
+                };
+
                 match find(auth, Some(&new_track), artist).await {
                     Ok(track) => {
                         recommendation_parameters.tracks.push(track.name);
@@ -791,7 +838,7 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
 async fn replace_playlist_items(
     auth: &mut SpotifyAuth,
     playlist_id: &str,
-    tracks: &Vec<Song>,
+    tracks: &[Song],
 ) -> Result<(), Box<dyn error::Error>> {
     let url = format!("https://api.spotify.com/v1/playlists/{playlist_id}/tracks");
 
@@ -829,7 +876,11 @@ async fn get_recommendations(
     let headers = auth_header(auth).await?;
 
     let client = reqwest::Client::new();
-    let mut request_builder = client.get(url).headers(headers).query(&[("limit", 50)]);
+    let mut request_builder = client
+        .get(url)
+        .headers(headers)
+        .query(&[("limit", params.limit)])
+        .query(&[("market", "from_token")]);
     if !params.seed_artists.is_empty() {
         request_builder = request_builder.query(&[("seed_artists", params.seed_artists.join(","))])
     }
@@ -930,7 +981,7 @@ async fn find(
     }
 }
 
-fn choose_element<T: Display>(elems: &Vec<T>) -> Result<u8, Box<dyn error::Error>> {
+fn choose_element<T: Display>(elems: &[T]) -> Result<u8, Box<dyn error::Error>> {
     println!("Which one of these is the one you wanted?");
     println!("Give the number/index of the one you want, or X if none of them.\n");
     for (ind, e) in elems.iter().enumerate() {
@@ -943,7 +994,8 @@ fn choose_element<T: Display>(elems: &Vec<T>) -> Result<u8, Box<dyn error::Error
 
     if !(user_response.is_empty() || user_response.starts_with("x")) {
         let ind: u8 = user_response.parse()?;
-        return Ok(ind);
+
+        Ok(ind)
     } else {
         Err("None selected.".into())
     }
