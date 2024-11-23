@@ -41,6 +41,7 @@ struct Song {
     album: Option<Album>,
     name: String,
     id: String,
+    uri: String,
     artists: Vec<Artist>,
     is_playable: Option<bool>,
 }
@@ -249,6 +250,11 @@ struct ArtistsObject {
 struct TrackOrArtist {
     name: String,
     id: String,
+}
+
+#[derive(Deserialize, Debug)]
+struct RecommendationResponse {
+    tracks: Vec<Song>,
 }
 
 async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn error::Error>> {
@@ -639,7 +645,13 @@ pub async fn recommendation_play(
 ) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
-    unimplemented!()
+    playback_play(
+        auth,
+        Some(&format!("spotify:playlist:{managed_list}")),
+        index,
+    )
+    .await?;
+    playback_show(auth, false).await
 }
 
 pub async fn recommendation_save(
@@ -700,7 +712,7 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                 let songs = get_recommendations(auth, &recommendation_parameters).await?;
 
                 println!("Got the following recommendations:");
-                for song in songs {
+                for song in songs.iter() {
                     println!("{song}");
                 }
 
@@ -710,6 +722,7 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                 user_response = user_response.trim().to_lowercase();
 
                 if user_response.starts_with("y") {
+                    replace_playlist_items(auth, &managed_list, &songs).await?;
                     break;
                 } else {
                     println!("Ok, going again.");
@@ -775,9 +788,36 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
     Ok(())
 }
 
-#[derive(Deserialize, Debug)]
-struct RecommendationResponse {
-    tracks: Vec<Song>,
+async fn replace_playlist_items(
+    auth: &mut SpotifyAuth,
+    playlist_id: &str,
+    tracks: &Vec<Song>,
+) -> Result<(), Box<dyn error::Error>> {
+    let url = format!("https://api.spotify.com/v1/playlists/{playlist_id}/tracks");
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let uris: Vec<String> = tracks.iter().map(|song| song.uri.to_owned()).collect();
+    let res = client
+        .put(url)
+        .headers(headers)
+        .header("content-length", 0)
+        .query(&[("uris", uris.join(","))])
+        .send()
+        .await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+
+        println!("Got this far");
+        println!("{}", response_text.clone());
+
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    Ok(())
 }
 
 async fn get_recommendations(
