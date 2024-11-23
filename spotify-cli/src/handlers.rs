@@ -3,7 +3,7 @@ use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     StatusCode,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{env, error, fmt::Display, io};
 
@@ -27,12 +27,20 @@ struct Album {
 #[derive(Deserialize, Debug)]
 struct Artist {
     name: String,
+    id: String,
+}
+
+impl Display for Artist {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }
 
 #[derive(Deserialize, Debug)]
 struct Song {
     album: Option<Album>,
     name: String,
+    id: String,
     artists: Vec<Artist>,
     is_playable: Option<bool>,
 }
@@ -621,10 +629,227 @@ pub async fn recommendation_save(
     unimplemented!()
 }
 
+#[derive(Deserialize, Debug, Default, Serialize)]
+struct RecommendationParameters {
+    limit: u8,
+    market: String,
+    artists: Vec<String>,
+    seed_artists: Vec<String>,
+    genres: Vec<String>,
+    seed_genres: Vec<String>,
+    tracks: Vec<String>,
+    seed_tracks: Vec<String>,
+}
+
+impl Display for RecommendationParameters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Artists: {:?}", self.artists)?;
+        writeln!(f, "Genres: {:?}", self.genres)?;
+        writeln!(f, "Tracks: {:?}", self.tracks)?;
+
+        Ok(())
+    }
+}
+
 pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
-    unimplemented!()
+    let mut recommendation_parameters = RecommendationParameters::default();
+    recommendation_parameters.limit = 20;
+    recommendation_parameters.market = "from_token".to_string();
+
+    let mut user_response: String = String::new();
+    while !user_response.starts_with("q") {
+        println!("Current parameters:\n{recommendation_parameters}\n");
+        println!("What would you like to edit? (Enter the number of the option)");
+        println!("0 - Generate recommendations.");
+        println!("1 - Add an artist.");
+        println!("2 - Add a genre.");
+        println!("3 - Add a track/song.");
+        println!("q - Quit without generating recommendations.");
+        println!();
+
+        user_response = String::new();
+        io::stdin().read_line(&mut user_response)?;
+        user_response = user_response.trim().to_lowercase();
+
+        match user_response.as_str() {
+            "0" => unimplemented!(),
+            "1" => {
+                println!("Artist name?");
+                let mut new_artist = String::new();
+                io::stdin().read_line(&mut new_artist)?;
+                new_artist = new_artist.trim().to_lowercase();
+                println!();
+
+                match find(auth, None, Some(&new_artist)).await {
+                    Ok(artist) => {
+                        recommendation_parameters.artists.push(artist.name);
+                        recommendation_parameters.seed_artists.push(artist.id);
+                    }
+                    Err(e) => println!("{}", e),
+                }
+            }
+            "2" => {
+                let mut new_genre = String::new();
+                io::stdin().read_line(&mut new_genre)?;
+                new_genre = new_genre.trim().to_lowercase();
+                recommendation_parameters.genres.push(new_genre);
+            }
+            "3" => {
+                println!("Song name?");
+                let mut new_track = String::new();
+                io::stdin().read_line(&mut new_track)?;
+                new_track = new_track.trim().to_lowercase();
+
+                println!("\nDo you want to specify an artist? (Empty response if not)");
+                let mut by_artist = String::new();
+                io::stdin().read_line(&mut by_artist)?;
+                by_artist = by_artist.trim().to_lowercase();
+                println!();
+
+                let artist: Option<&str>;
+                if !by_artist.is_empty() {
+                    artist = Some(&by_artist)
+                } else {
+                    artist = None
+                }
+                match find(auth, Some(&new_track), artist).await {
+                    Ok(track) => {
+                        recommendation_parameters.tracks.push(track.name);
+                        recommendation_parameters.seed_tracks.push(track.id);
+                    }
+                    Err(e) => println!("{}", e),
+                }
+            }
+            "q" => {
+                println!("Ok, quitting without generating recommendations.");
+                break;
+            }
+            _ => println!("Unrecognized command: {user_response}"),
+        }
+
+        println!("\n***********************************\n");
+    }
+
+    Ok(())
+}
+
+#[derive(Deserialize, Debug)]
+struct FindResponse {
+    tracks: Option<TracksObject>,
+    artists: Option<ArtistsObject>,
+}
+
+#[derive(Deserialize, Debug)]
+struct TracksObject {
+    items: Vec<Song>,
+}
+
+#[derive(Deserialize, Debug)]
+struct ArtistsObject {
+    items: Vec<Artist>,
+}
+
+#[derive(Deserialize, Debug)]
+struct TrackOrArtist {
+    name: String,
+    id: String,
+}
+
+async fn find(
+    auth: &mut SpotifyAuth,
+    track: Option<&str>,
+    artist: Option<&str>,
+) -> Result<TrackOrArtist, Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/search".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let mut request_builder = client.get(url).headers(headers).query(&[("limit", 5)]);
+
+    if let Some(track) = track {
+        if let Some(artist) = artist {
+            request_builder =
+                request_builder.query(&[("q", format!("track:{track} artist:{artist}"))]);
+        } else {
+            request_builder = request_builder.query(&[("q", format!("track:{track}"))]);
+        }
+        request_builder = request_builder.query(&[("type", "track".to_string())]);
+    } else if let Some(artist) = artist {
+        request_builder = request_builder.query(&[
+            ("q", format!("artist:{artist}")),
+            ("type", "artist".to_string()),
+        ]);
+    } else {
+        return Err(
+            "You have to specify an artist or track. What are we going to search for otherwise?"
+                .into(),
+        );
+    }
+    let res = request_builder.send().await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let find_response: FindResponse =
+        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    if track.is_some() {
+        match find_response.tracks {
+            Some(t) => {
+                if t.items.is_empty() {
+                    return Err("Didn't find any tracks. Did you typo the song name?".into());
+                }
+                let ind = choose_element(&t.items)?;
+                let found_track = t.items.get(ind as usize).ok_or("Index out of bounds!")?;
+                Ok(TrackOrArtist {
+                    name: found_track.name.clone(),
+                    id: found_track.id.clone(),
+                })
+            }
+            None => Err("Didn't find any tracks. Did you typo the song name?".into()),
+        }
+    } else {
+        match find_response.artists {
+            Some(a) => {
+                if a.items.is_empty() {
+                    return Err("Didn't find any artists. Did you typo the artists name?".into());
+                }
+                let ind = choose_element(&a.items)?;
+                let found_artist = a.items.get(ind as usize).ok_or("Index out of bounds!")?;
+                Ok(TrackOrArtist {
+                    name: found_artist.name.clone(),
+                    id: found_artist.id.clone(),
+                })
+            }
+            None => Err("Didn't find any artists. Did you typo the artists name?".into()),
+        }
+    }
+}
+
+fn choose_element<T: Display>(elems: &Vec<T>) -> Result<u8, Box<dyn error::Error>> {
+    println!("Which one of these is the one you wanted?");
+    println!("Give the number/index of the one you want, or X if none of them.\n");
+    for (ind, e) in elems.iter().enumerate() {
+        println!("#{ind}: {e}");
+    }
+
+    let mut user_response = String::new();
+    io::stdin().read_line(&mut user_response)?;
+    user_response = user_response.trim().to_lowercase();
+
+    if !(user_response.is_empty() || user_response.starts_with("x")) {
+        let ind: u8 = user_response.parse()?;
+        return Ok(ind);
+    } else {
+        Err("None selected.".into())
+    }
 }
 
 pub async fn recommendation_init(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
