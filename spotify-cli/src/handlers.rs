@@ -206,6 +206,7 @@ impl PlaylistTracks {
         }
     }
 
+    // TODO: pagination
     pub fn get_tracks(self) -> Vec<Song> {
         let tracks: Vec<Song> = self
             .items
@@ -215,6 +216,9 @@ impl PlaylistTracks {
             .collect();
         tracks
     }
+
+    // TODO: get_tracks_ref
+    // TODO: use ^^ everywhere where tracks are used from PlaylistDescription or PlaylistTracks
 }
 
 #[derive(Deserialize, Debug)]
@@ -290,6 +294,11 @@ impl Display for RecommendationParameters {
 
         Ok(())
     }
+}
+
+#[derive(Deserialize, Debug)]
+struct GenresResponse {
+    genres: Vec<String>,
 }
 
 async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn error::Error>> {
@@ -769,6 +778,8 @@ pub async fn recommendation_save(
 pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
+    let mut genres: Option<Vec<String>> = None;
+
     let mut recommendation_parameters = RecommendationParameters {
         limit: 20,
         ..Default::default()
@@ -828,10 +839,24 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                 }
             }
             "3" => {
+                if genres.is_none() {
+                    genres = Some(get_available_genres(auth).await?);
+                }
+                println!(
+                    "Available genres:\n{}\n",
+                    genres.as_ref().unwrap().join(", ")
+                );
+
                 println!("Genre name?");
                 let mut new_genre = String::new();
                 io::stdin().read_line(&mut new_genre)?;
                 new_genre = new_genre.trim().to_lowercase();
+
+                if !genres.as_ref().unwrap().contains(&new_genre) {
+                    println!("Illegal genre.");
+                    continue;
+                }
+
                 recommendation_parameters.genres.push(new_genre);
             }
             "4" => {
@@ -925,6 +950,29 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
     Ok(())
 }
 
+async fn get_available_genres(
+    auth: &mut SpotifyAuth,
+) -> Result<Vec<String>, Box<dyn error::Error>> {
+    let url = "https://api.spotify.com/v1/recommendations/available-genre-seeds".to_string();
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let res = client.get(url).headers(headers).send().await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let genres_response: GenresResponse =
+        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    Ok(genres_response.genres)
+}
+
 async fn replace_playlist_items(
     auth: &mut SpotifyAuth,
     playlist_id: &str,
@@ -946,10 +994,6 @@ async fn replace_playlist_items(
 
     if res.error_for_status_ref().is_err() {
         let response_text = res.text().await?;
-
-        println!("Got this far");
-        println!("{}", response_text.clone());
-
         let response_parsed: Value = serde_json::from_str(&response_text)?;
         return Err(response_parsed["error"]["message"].as_str().unwrap().into());
     }
