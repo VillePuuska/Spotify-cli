@@ -114,7 +114,10 @@ enum RecommendationCommand {
     Play { index: Option<u8> },
 
     /// Save the latest list of recommendations to a playlist
-    Save { name: String },
+    Save {
+        name: String,
+        description: Option<String>,
+    },
 
     /// Generate a new list of recommendations
     Generate,
@@ -205,8 +208,8 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         Command::Recommendation(RecommendationCommand::Play { index }) => {
             recommendation_play(&mut auth, index).await?
         }
-        Command::Recommendation(RecommendationCommand::Save { name }) => {
-            recommendation_save(&mut auth, name).await?
+        Command::Recommendation(RecommendationCommand::Save { name, description }) => {
+            recommendation_save(&mut auth, name, description).await?
         }
         Command::Recommendation(RecommendationCommand::Generate) => {
             recommendation_generate(&mut auth).await?

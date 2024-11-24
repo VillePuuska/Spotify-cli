@@ -205,6 +205,16 @@ impl PlaylistTracks {
             }
         }
     }
+
+    pub fn get_tracks(self) -> Vec<Song> {
+        let tracks: Vec<Song> = self
+            .items
+            .into_iter()
+            .map(|track| track.track)
+            .filter(|track| track.is_playable != Some(false))
+            .collect();
+        tracks
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -730,12 +740,30 @@ pub async fn recommendation_play(
 }
 
 pub async fn recommendation_save(
-    _: &mut SpotifyAuth,
-    _: String,
+    auth: &mut SpotifyAuth,
+    name: String,
+    description: Option<String>,
 ) -> Result<(), Box<dyn error::Error>> {
-    // TODO: everything
+    let managed_list = get_managed_playlist_id()?;
+    let playlist_description = get_playlist_from_id(auth, &managed_list).await?;
 
-    unimplemented!()
+    if playlist_description.tracks.is_none() {
+        return Err("No tracks in the current managed playlist.".into());
+    }
+
+    let tracks = playlist_description.tracks.unwrap().get_tracks();
+
+    let playlist_create_response = create_playlist(
+        auth,
+        &name,
+        &description.unwrap_or(
+            "Playlist created by a CLI tool to save a list of recommendations.".to_string(),
+        ),
+        false,
+    )
+    .await?;
+
+    replace_playlist_items(auth, &playlist_create_response.id, &tracks).await
 }
 
 pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
@@ -1063,6 +1091,46 @@ fn choose_element<T: Display>(elems: &[T]) -> Result<u8, Box<dyn error::Error>> 
     }
 }
 
+async fn create_playlist(
+    auth: &mut SpotifyAuth,
+    name: &str,
+    description: &str,
+    public: bool,
+) -> Result<PlaylistCreateResponse, Box<dyn error::Error>> {
+    let user = get_user(auth).await?;
+
+    #[cfg(debug_assertions)]
+    println!("Creating playlist for user with id: {}", user.id);
+
+    let url = format!("https://api.spotify.com/v1/users/{}/playlists", user.id);
+
+    let headers = auth_header(auth).await?;
+
+    let client = reqwest::Client::new();
+    let mut res_builder = client.post(url).headers(headers);
+    let mut map = serde_json::Map::new();
+    map.insert("name".to_string(), serde_json::Value::from(name));
+    map.insert("public".to_string(), serde_json::Value::from(public));
+    map.insert(
+        "description".to_string(),
+        serde_json::Value::from(description),
+    );
+    res_builder = res_builder.json(&map);
+    let res = res_builder.send().await?;
+
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Value = serde_json::from_str(&response_text)?;
+        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+    }
+
+    let response_text = res.text().await?;
+    let playlist_create_response: PlaylistCreateResponse =
+        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+    Ok(playlist_create_response)
+}
+
 pub async fn recommendation_init(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
     if let Ok(id) = get_managed_playlist_id() {
         println!("The env variable for a managed playlist is already set to: {id}");
@@ -1078,39 +1146,9 @@ pub async fn recommendation_init(auth: &mut SpotifyAuth) -> Result<(), Box<dyn e
         }
     }
 
-    let user = get_user(auth).await?;
-
-    #[cfg(debug_assertions)]
-    println!("Creating playlist for user with id: {}", user.id);
-
-    let url = format!("https://api.spotify.com/v1/users/{}/playlists", user.id);
-
-    let headers = auth_header(auth).await?;
-
-    let client = reqwest::Client::new();
-    let mut res_builder = client.post(url).headers(headers);
-    let mut map = serde_json::Map::new();
-    map.insert(
-        "name".to_string(),
-        serde_json::Value::from("CLI managed playlist"),
-    );
-    map.insert("public".to_string(), serde_json::Value::from(false));
-    map.insert(
-        "description".to_string(),
-        serde_json::Value::from("This playlist is created and managed by a CLI tool to hold generated recommendations. Do not touch!"),
-    );
-    res_builder = res_builder.json(&map);
-    let res = res_builder.send().await?;
-
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
-    let playlist_create_response: PlaylistCreateResponse =
-        serde_json::from_str(&response_text).map_err(|_| response_text)?;
+    let name = "CLI managed playlist";
+    let description = "This playlist is created and managed by a CLI tool to hold generated recommendations. Do not touch!";
+    let playlist_create_response = create_playlist(auth, name, description, false).await?;
 
     println!("Managed playlist created.");
     println!("The API does not allow setting the playlist as fully private; you might want to do this from the app now.");
