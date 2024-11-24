@@ -5,7 +5,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{env, error, fmt::Display, io};
+use std::{env, error, fmt::Display, io, time::Duration};
 
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
@@ -263,16 +263,16 @@ struct RecommendationParameters {
     artists: Vec<String>,
     seed_artists: Vec<String>,
     genres: Vec<String>,
-    seed_genres: Vec<String>,
     tracks: Vec<String>,
     seed_tracks: Vec<String>,
 }
 
 impl Display for RecommendationParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Limit:   {:?}", self.limit)?;
         writeln!(f, "Artists: {:?}", self.artists)?;
-        writeln!(f, "Genres: {:?}", self.genres)?;
-        writeln!(f, "Tracks: {:?}", self.tracks)?;
+        writeln!(f, "Genres:  {:?}", self.genres)?;
+        writeln!(f, "Tracks:  {:?}", self.tracks)?;
 
         Ok(())
     }
@@ -721,6 +721,7 @@ pub async fn recommendation_play(
         index,
     )
     .await?;
+    tokio::time::sleep(Duration::from_millis(500u64)).await;
     playback_show(auth, false).await
 }
 
@@ -728,6 +729,8 @@ pub async fn recommendation_save(
     _: &mut SpotifyAuth,
     _: String,
 ) -> Result<(), Box<dyn error::Error>> {
+    // TODO: everything
+
     unimplemented!()
 }
 
@@ -741,12 +744,14 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
 
     let mut user_response: String = String::new();
     while !user_response.starts_with("q") {
+        println!("\n***********************************\n");
         println!("Current parameters:\n{recommendation_parameters}\n");
         println!("What would you like to edit? (Enter the number of the option)");
-        println!("0 - Generate recommendations.");
-        println!("1 - Add an artist.");
-        println!("2 - Add a genre.");
-        println!("3 - Add a track/song.");
+        println!("1 - Change the limit/number of recommendations.");
+        println!("2 - Add an artist.");
+        println!("3 - Add a genre.");
+        println!("4 - Add a track/song.");
+        println!("g - Generate recommendations.");
         println!("q - Quit without generating recommendations.");
         println!();
 
@@ -755,27 +760,25 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
         user_response = user_response.trim().to_lowercase();
 
         match user_response.as_str() {
-            "0" => {
-                let songs = get_recommendations(auth, &recommendation_parameters).await?;
-
-                println!("Got the following recommendations:");
-                for song in songs.iter() {
-                    println!("{song}");
-                }
-
-                println!("\nAccept this list or keep trying? (y to accept, N to keep trying)");
-                let mut user_response = String::new();
-                io::stdin().read_line(&mut user_response)?;
-                user_response = user_response.trim().to_lowercase();
-
-                if user_response.starts_with("y") {
-                    replace_playlist_items(auth, &managed_list, &songs).await?;
-                    break;
-                } else {
-                    println!("Ok, going again.");
+            // TODO: clear a parameter, implement all optional tuning knobs somehow
+            // Ask if we should play after accepting recs?
+            "1" => {
+                println!("New limit? (1-100)");
+                let mut new_limit = String::new();
+                io::stdin().read_line(&mut new_limit)?;
+                let parsed_limit: Result<u8, _> = new_limit.trim().parse();
+                match parsed_limit {
+                    Ok(limit) => {
+                        if limit == 0 || limit > 100 {
+                            println!("Limit needs to be between 1-100.");
+                        } else {
+                            recommendation_parameters.limit = limit
+                        }
+                    }
+                    Err(e) => println!("{e}"),
                 }
             }
-            "1" => {
+            "2" => {
                 println!("Artist name?");
                 let mut new_artist = String::new();
                 io::stdin().read_line(&mut new_artist)?;
@@ -790,13 +793,14 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                     Err(e) => println!("{}", e),
                 }
             }
-            "2" => {
+            "3" => {
+                println!("Genre name?");
                 let mut new_genre = String::new();
                 io::stdin().read_line(&mut new_genre)?;
                 new_genre = new_genre.trim().to_lowercase();
                 recommendation_parameters.genres.push(new_genre);
             }
-            "3" => {
+            "4" => {
                 println!("Song name?");
                 let mut new_track = String::new();
                 io::stdin().read_line(&mut new_track)?;
@@ -822,14 +826,44 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                     Err(e) => println!("{}", e),
                 }
             }
+            "g" => {
+                let seeds = recommendation_parameters.seed_artists.len()
+                    + recommendation_parameters.genres.len()
+                    + recommendation_parameters.seed_tracks.len();
+                if seeds == 0 {
+                    println!("You need to specify at least one artist or genre or track.");
+                    continue;
+                }
+                if seeds == 0 || seeds > 5 {
+                    println!("Too many artists & genres & tracks ({seeds}) specified.");
+                    println!("Can specify at most 5 in total.");
+                    continue;
+                }
+                let songs = get_recommendations(auth, &recommendation_parameters).await?;
+
+                println!("Got the following recommendations:");
+                for song in songs.iter() {
+                    println!("{song}");
+                }
+
+                println!("\nAccept this list or keep trying? (y to accept, N to keep trying)");
+                let mut user_response = String::new();
+                io::stdin().read_line(&mut user_response)?;
+                user_response = user_response.trim().to_lowercase();
+
+                if user_response.starts_with("y") {
+                    replace_playlist_items(auth, &managed_list, &songs).await?;
+                    break;
+                } else {
+                    println!("Ok, going again.");
+                }
+            }
             "q" => {
                 println!("Ok, quitting without generating recommendations.");
                 break;
             }
             _ => println!("Unrecognized command: {user_response}"),
         }
-
-        println!("\n***********************************\n");
     }
 
     Ok(())
@@ -884,8 +918,8 @@ async fn get_recommendations(
     if !params.seed_artists.is_empty() {
         request_builder = request_builder.query(&[("seed_artists", params.seed_artists.join(","))])
     }
-    if !params.seed_genres.is_empty() {
-        request_builder = request_builder.query(&[("seed_genres", params.seed_genres.join(","))])
+    if !params.genres.is_empty() {
+        request_builder = request_builder.query(&[("seed_genres", params.genres.join(","))])
     }
     if !params.seed_tracks.is_empty() {
         request_builder = request_builder.query(&[("seed_tracks", params.seed_tracks.join(","))])

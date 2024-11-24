@@ -175,12 +175,12 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             // The API keeps returning the previously played song
             // without a bit of a sleep here. Not happy about this
             // but what can I do...
-            tokio::time::sleep(Duration::from_millis(300u64)).await;
+            tokio::time::sleep(Duration::from_millis(500u64)).await;
             playback_show(&mut auth, false).await?;
         }
         Command::Previous => {
             playback_previous(&mut auth).await?;
-            tokio::time::sleep(Duration::from_millis(300u64)).await;
+            tokio::time::sleep(Duration::from_millis(500u64)).await;
             playback_show(&mut auth, false).await?;
         }
         Command::Restart => playback_restart(&mut auth).await?,
@@ -194,7 +194,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         Command::Playlist(PlaylistCommand::List) => playlist_list(&mut auth).await?,
         Command::Playlist(PlaylistCommand::Play { uri, index }) => {
             playback_play(&mut auth, Some(&uri), index).await?;
-            tokio::time::sleep(Duration::from_millis(300u64)).await;
+            tokio::time::sleep(Duration::from_millis(500u64)).await;
             playback_show(&mut auth, false).await?;
         }
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
