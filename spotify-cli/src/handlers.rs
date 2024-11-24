@@ -186,21 +186,50 @@ impl PlaylistTracks {
         self,
         auth: &mut SpotifyAuth,
         highlight: Option<&str>,
+        max_lines: Option<u16>,
     ) -> Result<(), Box<dyn error::Error>> {
-        // TODO: add a param to print all vs only some number of tracks _around_
-        // the highlighted track, or if None then from the start
+        if let Some(0) = max_lines {
+            return Ok(());
+        }
+
         let tracks: Vec<Song> = self.get_tracks(auth).await?;
+
+        let mut first_ind = 0;
+        let mut last_ind = tracks.len() as i32;
+        let mut highlight_ind = None;
+
+        if let Some(name) = highlight {
+            for (ind, track) in tracks.iter().enumerate() {
+                if track.name == name {
+                    highlight_ind = Some(ind);
+                    if let Some(max_lines) = max_lines {
+                        first_ind = ind as i32 - ((max_lines as i32 - 1) / 2);
+                        last_ind = ind as i32 + (max_lines as i32 / 2);
+                    }
+                    break;
+                }
+            }
+            if highlight_ind.is_none() {
+                return Err("Could not find the song to highlight.".into());
+            }
+        } else if let Some(max_lines) = max_lines {
+            last_ind = (max_lines - 1) as i32;
+        }
 
         let n = tracks.len();
         for (ind, track) in tracks.iter().take(n - 1).enumerate() {
-            if highlight.is_some() && track.name == highlight.unwrap() {
+            if (ind as i32) < first_ind || (ind as i32) > last_ind {
+                continue;
+            }
+            if highlight_ind.is_some() && ind == highlight_ind.unwrap() {
                 println!("\x1b[93m#{ind} {}\x1b[0m", track);
             } else {
                 println!("#{ind} {}", track);
             }
         }
         if let Some(last) = tracks.last() {
-            if highlight.is_some() && last.name == highlight.unwrap() {
+            if ((n - 1) as i32) < first_ind || ((n - 1) as i32) > last_ind {
+            } else if highlight.is_some() && last.name == highlight.unwrap() {
                 println!("\x1b[93m#{} {}\x1b[0m", n - 1, last);
             } else {
                 println!("#{} {}", n - 1, last);
@@ -698,7 +727,10 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
     Ok(())
 }
 
-pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+pub async fn playlist_current(
+    auth: &mut SpotifyAuth,
+    max_lines: Option<u16>,
+) -> Result<(), Box<dyn error::Error>> {
     let player_response = get_player(auth).await?;
 
     let current_song = player_response.song.name;
@@ -717,12 +749,12 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
 
             if let Some(tracks) = playlist_description.tracks {
                 println!();
-                tracks.print_tracks(auth, Some(&current_song)).await?;
+                tracks
+                    .print_tracks(auth, Some(&current_song), max_lines)
+                    .await?;
             } else {
                 println!("\nNot actually playing from a playlist currently.")
             }
-            // TODO: add a param to print all vs only some number of tracks _around_
-            // the current track
         }
         None => println!("Not playing from a playlist currently."),
     }
@@ -735,7 +767,10 @@ fn get_managed_playlist_id() -> Result<String, Box<dyn error::Error>> {
         .map_err(|_| "The env variable SPOTIFY_CLI_MANAGED_PLAYLIST_ID is not set. If a managed playlist has not been created yet, run 'recommendation init'; if it has been created then set the env variable with the id of the playlist.".into())
 }
 
-pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::Error>> {
+pub async fn recommendation_show(
+    auth: &mut SpotifyAuth,
+    max_lines: Option<u16>,
+) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
     let playlist_description = get_playlist_from_id(auth, &managed_list).await?;
@@ -750,7 +785,7 @@ pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn e
 
     if let Some(tracks) = playlist_description.tracks {
         println!();
-        tracks.print_tracks(auth, None).await?;
+        tracks.print_tracks(auth, None, max_lines).await?;
     } else {
         println!("\nNo songs in the list.");
     }

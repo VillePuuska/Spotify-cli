@@ -62,7 +62,10 @@ enum Command {
     Restart,
 
     /// Show the current playlist's tracks
-    Current,
+    Current {
+        /// Max number of songs to print around the current track
+        max_lines: Option<u16>,
+    },
 
     /// Jump to song in current playlist
     Jump { offset: u16 },
@@ -108,7 +111,10 @@ enum PlaylistCommand {
 #[derive(Clone, Debug, Subcommand)]
 enum RecommendationCommand {
     /// Show latest recommendation list
-    Show,
+    Show {
+        /// Max number of songs to print from the start of the list
+        max_lines: Option<u16>,
+    },
 
     /// Start playing the latest recommendation list
     Play { index: Option<u16> },
@@ -187,7 +193,7 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
             playback_show(&mut auth, false).await?;
         }
         Command::Restart => playback_restart(&mut auth).await?,
-        Command::Current => playlist_current(&mut auth).await?,
+        Command::Current { max_lines } => playlist_current(&mut auth, max_lines).await?,
         Command::Jump { offset } => {
             playback_play(&mut auth, None, Some(offset)).await?;
             tokio::time::sleep(Duration::from_millis(500u64)).await;
@@ -202,8 +208,8 @@ async fn main() -> Result<(), Box<dyn error::Error>> {
         }
         Command::Auth(AuthCommand::Refresh) => auth.refresh_token().await?,
         Command::Auth(AuthCommand::Reset) => auth.reset_auth().await?,
-        Command::Recommendation(RecommendationCommand::Show) => {
-            recommendation_show(&mut auth).await?
+        Command::Recommendation(RecommendationCommand::Show { max_lines }) => {
+            recommendation_show(&mut auth, max_lines).await?
         }
         Command::Recommendation(RecommendationCommand::Play { index }) => {
             recommendation_play(&mut auth, index).await?
