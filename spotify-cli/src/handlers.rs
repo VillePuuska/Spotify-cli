@@ -271,8 +271,12 @@ impl Display for RecommendationParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Limit:   {:?}", self.limit)?;
         writeln!(f, "Artists: {:?}", self.artists)?;
+        #[cfg(debug_assertions)]
+        writeln!(f, "A ids:   {:?}", self.seed_artists)?;
         writeln!(f, "Genres:  {:?}", self.genres)?;
         writeln!(f, "Tracks:  {:?}", self.tracks)?;
+        #[cfg(debug_assertions)]
+        writeln!(f, "T ids:   {:?}", self.seed_tracks)?;
 
         Ok(())
     }
@@ -751,6 +755,9 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
         println!("2 - Add an artist.");
         println!("3 - Add a genre.");
         println!("4 - Add a track/song.");
+        println!("7 - Clear artists.");
+        println!("8 - Clear genres.");
+        println!("9 - Clear tracks/songs.");
         println!("g - Generate recommendations.");
         println!("q - Quit without generating recommendations.");
         println!();
@@ -760,8 +767,7 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
         user_response = user_response.trim().to_lowercase();
 
         match user_response.as_str() {
-            // TODO: clear a parameter, implement all optional tuning knobs somehow
-            // Ask if we should play after accepting recs?
+            // TODO: implement all optional tuning knobs somehow
             "1" => {
                 println!("New limit? (1-100)");
                 let mut new_limit = String::new();
@@ -826,6 +832,17 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                     Err(e) => println!("{}", e),
                 }
             }
+            "7" => {
+                recommendation_parameters.artists = Vec::new();
+                recommendation_parameters.seed_artists = Vec::new();
+            }
+            "8" => {
+                recommendation_parameters.genres = Vec::new();
+            }
+            "9" => {
+                recommendation_parameters.tracks = Vec::new();
+                recommendation_parameters.seed_tracks = Vec::new();
+            }
             "g" => {
                 let seeds = recommendation_parameters.seed_artists.len()
                     + recommendation_parameters.genres.len()
@@ -853,6 +870,17 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
 
                 if user_response.starts_with("y") {
                     replace_playlist_items(auth, &managed_list, &songs).await?;
+
+                    println!("Added recommendations to the managed playlist.");
+                    println!("Start playing the list? (Y/n)");
+                    let mut user_response = String::new();
+                    io::stdin().read_line(&mut user_response)?;
+                    user_response = user_response.trim().to_lowercase();
+
+                    if user_response.is_empty() || user_response.starts_with("y") {
+                        recommendation_play(auth, None).await?;
+                    }
+
                     break;
                 } else {
                     println!("Ok, going again.");
