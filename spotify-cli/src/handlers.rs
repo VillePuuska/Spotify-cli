@@ -163,7 +163,6 @@ struct TracksLink {
 
 #[derive(Deserialize, Debug)]
 struct PlaylistTracks {
-    #[allow(dead_code)]
     next: Option<String>,
     items: Vec<TrackItem>,
 }
@@ -183,42 +182,76 @@ impl Display for PlaylistTracks {
 }
 
 impl PlaylistTracks {
-    pub fn print_tracks(&self, highlight: Option<&str>) {
-        let tracks: Vec<&TrackItem> = self
-            .items
-            .iter()
-            .filter(|track| track.track.is_playable != Some(false))
-            .collect();
+    pub async fn print_tracks(
+        self,
+        auth: &mut SpotifyAuth,
+        highlight: Option<&str>,
+    ) -> Result<(), Box<dyn error::Error>> {
+        // TODO: add a param to print all vs only some number of tracks _around_
+        // the highlighted track, or if None then from the start
+        let tracks: Vec<Song> = self.get_tracks(auth).await?;
+
         let n = tracks.len();
         for (ind, track) in tracks.iter().take(n - 1).enumerate() {
-            if highlight.is_some() && track.track.name == highlight.unwrap() {
-                println!("\x1b[93m#{ind} {}\x1b[0m", track.track);
+            if highlight.is_some() && track.name == highlight.unwrap() {
+                println!("\x1b[93m#{ind} {}\x1b[0m", track);
             } else {
-                println!("#{ind} {}", track.track);
+                println!("#{ind} {}", track);
             }
         }
         if let Some(last) = tracks.last() {
-            if highlight.is_some() && last.track.name == highlight.unwrap() {
-                println!("\x1b[93m#{} {}\x1b[0m", n - 1, last.track);
+            if highlight.is_some() && last.name == highlight.unwrap() {
+                println!("\x1b[93m#{} {}\x1b[0m", n - 1, last);
             } else {
-                println!("#{} {}", n - 1, last.track);
+                println!("#{} {}", n - 1, last);
             }
         }
+
+        Ok(())
     }
 
-    // TODO: pagination
-    pub fn get_tracks(self) -> Vec<Song> {
-        let tracks: Vec<Song> = self
+    pub async fn get_tracks(
+        self,
+        auth: &mut SpotifyAuth,
+    ) -> Result<Vec<Song>, Box<dyn error::Error>> {
+        let mut tracks: Vec<Song> = self
             .items
             .into_iter()
             .map(|track| track.track)
             .filter(|track| track.is_playable != Some(false))
             .collect();
-        tracks
-    }
 
-    // TODO: get_tracks_ref
-    // TODO: use ^^ everywhere where tracks are used from PlaylistDescription or PlaylistTracks
+        let mut next = self.next.clone();
+        while let Some(url) = next {
+            let headers = auth_header(auth).await?;
+            let client = reqwest::Client::new();
+
+            let res = client.get(url).headers(headers).send().await?;
+
+            if res.error_for_status_ref().is_err() {
+                let response_text = res.text().await?;
+                let response_parsed: Value = serde_json::from_str(&response_text)?;
+                return Err(response_parsed["error"]["message"].as_str().unwrap().into());
+            }
+
+            let response_text = res.text().await?;
+            let playlist_tracks: PlaylistTracks =
+                serde_json::from_str(&response_text).map_err(|_| response_text)?;
+
+            let mut more_tracks: Vec<Song> = playlist_tracks
+                .items
+                .into_iter()
+                .map(|track| track.track)
+                .filter(|track| track.is_playable != Some(false))
+                .collect();
+
+            tracks.append(&mut more_tracks);
+
+            next = playlist_tracks.next;
+        }
+
+        Ok(tracks)
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -330,10 +363,6 @@ async fn get_playlist_from_href(
     auth: &mut SpotifyAuth,
     href: &str,
 ) -> Result<PlaylistDescription, Box<dyn error::Error>> {
-    // TODO: pagination. `tracks.items` will "only" have the first 100 tracks;
-    // the rest need to be fetched using `tracks.next` URIs until it's None.
-    // Need to add a param to specify if all tracks are actually needed/wanted.
-
     let headers = auth_header(auth).await?;
     let client = reqwest::Client::new();
 
@@ -361,9 +390,6 @@ async fn get_playlist_from_id(
     auth: &mut SpotifyAuth,
     id: &str,
 ) -> Result<PlaylistDescription, Box<dyn error::Error>> {
-    // TODO: pagination. `tracks.items` will "only" have the first 100 tracks;
-    // the rest need to be fetched using `tracks.next` URIs until it's None.
-    // Need to add a param to specify if all tracks are actually needed/wanted.
     let url = format!("https://api.spotify.com/v1/playlists/{id}");
 
     let headers = auth_header(auth).await?;
@@ -451,7 +477,7 @@ pub async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error:
 pub async fn playback_play(
     auth: &mut SpotifyAuth,
     uri: Option<&str>,
-    index: Option<u8>,
+    index: Option<u16>,
 ) -> Result<(), Box<dyn error::Error>> {
     let url = "https://api.spotify.com/v1/me/player/play".to_string();
 
@@ -691,12 +717,12 @@ pub async fn playlist_current(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
 
             if let Some(tracks) = playlist_description.tracks {
                 println!();
-                tracks.print_tracks(Some(&current_song));
+                tracks.print_tracks(auth, Some(&current_song)).await?;
             } else {
                 println!("\nNot actually playing from a playlist currently.")
             }
-            // TODO: maybe add a param to print all vs only some number of tracks _around_
-            // the current track?
+            // TODO: add a param to print all vs only some number of tracks _around_
+            // the current track
         }
         None => println!("Not playing from a playlist currently."),
     }
@@ -724,7 +750,7 @@ pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn e
 
     if let Some(tracks) = playlist_description.tracks {
         println!();
-        tracks.print_tracks(None);
+        tracks.print_tracks(auth, None).await?;
     } else {
         println!("\nNo songs in the list.");
     }
@@ -734,7 +760,7 @@ pub async fn recommendation_show(auth: &mut SpotifyAuth) -> Result<(), Box<dyn e
 
 pub async fn recommendation_play(
     auth: &mut SpotifyAuth,
-    index: Option<u8>,
+    index: Option<u16>,
 ) -> Result<(), Box<dyn error::Error>> {
     let managed_list = get_managed_playlist_id()?;
 
@@ -760,7 +786,11 @@ pub async fn recommendation_save(
         return Err("No tracks in the current managed playlist.".into());
     }
 
-    let tracks = playlist_description.tracks.unwrap().get_tracks();
+    let tracks = playlist_description
+        .tracks
+        .unwrap()
+        .get_tracks(auth)
+        .await?;
 
     let playlist_create_response = create_playlist(
         auth,

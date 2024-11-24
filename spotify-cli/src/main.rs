@@ -65,7 +65,7 @@ enum Command {
     Current,
 
     /// Jump to song in current playlist
-    Jump { offset: u8 },
+    Jump { offset: u16 },
 
     /// Show current queue
     Queue {
@@ -102,7 +102,7 @@ enum PlaylistCommand {
     List,
 
     /// Start playing a playlist
-    Play { uri: String, index: Option<u8> },
+    Play { uri: String, index: Option<u16> },
 }
 
 #[derive(Clone, Debug, Subcommand)]
@@ -111,7 +111,7 @@ enum RecommendationCommand {
     Show,
 
     /// Start playing the latest recommendation list
-    Play { index: Option<u8> },
+    Play { index: Option<u16> },
 
     /// Save the latest list of recommendations to a playlist
     Save {
