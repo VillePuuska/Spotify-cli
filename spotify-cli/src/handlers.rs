@@ -128,8 +128,6 @@ impl Display for PlaylistResponse {
 #[derive(Deserialize, Debug)]
 struct Playlist {
     description: Option<String>,
-    #[allow(dead_code)]
-    href: String,
     uri: String,
     name: String,
     tracks: TracksLink,
@@ -156,8 +154,6 @@ impl Display for Playlist {
 
 #[derive(Deserialize, Debug)]
 struct TracksLink {
-    #[allow(dead_code)]
-    href: String,
     total: u16,
 }
 
@@ -704,6 +700,8 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
     let headers = auth_header(auth).await?;
 
     // TODO: pagination. Do I _actually_ care? When would I ever have >50 playlists created&liked?
+    // Could actually just implement this in the Display impl since `playlist_response` is not even
+    // returned; it's just printed.
     let client = reqwest::Client::new();
     let res = client
         .get(url)
