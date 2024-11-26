@@ -7,6 +7,16 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::HashMap, env, error, fmt::Display, io, time::Duration};
 
+fn get_max_print_width() -> usize {
+    let width = term_size::dimensions().unwrap_or((80, 0)).0;
+
+    if width >= 80 {
+        width
+    } else {
+        width * ((80 / width) + 1)
+    }
+}
+
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
     let authorization_value = format!("Bearer {}", access_token);
@@ -212,23 +222,35 @@ impl PlaylistTracks {
             last_ind = (max_lines - 1) as i32;
         }
 
+        let max_print_width = get_max_print_width();
         let n = tracks.len();
         for (ind, track) in tracks.iter().take(n - 1).enumerate() {
             if (ind as i32) < first_ind || (ind as i32) > last_ind {
                 continue;
             }
+
+            let mut line = format!("#{ind} {}", track);
+            if line.len() > max_print_width {
+                line = line.split_at(max_print_width - 4).0.to_string() + " ...";
+            }
+
             if highlight_ind.is_some() && ind == highlight_ind.unwrap() {
-                println!("\x1b[93m#{ind} {}\x1b[0m", track);
+                println!("\x1b[93m{line}\x1b[0m");
             } else {
-                println!("#{ind} {}", track);
+                println!("{line}");
             }
         }
         if let Some(last) = tracks.last() {
+            let mut line = format!("#{} {}", n - 1, last);
+            if line.len() > max_print_width {
+                line = line.split_at(max_print_width - 4).0.to_string() + " ...";
+            }
+
             if ((n - 1) as i32) < first_ind || ((n - 1) as i32) > last_ind {
             } else if highlight.is_some() && last.name == highlight.unwrap() {
-                println!("\x1b[93m#{} {}\x1b[0m", n - 1, last);
+                println!("\x1b[93m{line}\x1b[0m");
             } else {
-                println!("#{} {}", n - 1, last);
+                println!("{line}");
             }
         }
 
@@ -907,9 +929,14 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                 }
                 let songs = get_recommendations(auth, &recommendation_parameters).await?;
 
+                let max_print_width = get_max_print_width();
                 println!("Got the following recommendations:");
                 for song in songs.iter() {
-                    println!("{song}");
+                    let mut line = format!("{song}");
+                    if line.len() > max_print_width {
+                        line = line.split_at(max_print_width - 4).0.to_string() + " ...";
+                    }
+                    println!("{line}");
                 }
 
                 println!("\nAccept this list or keep trying? (y to accept, N to keep trying)");
