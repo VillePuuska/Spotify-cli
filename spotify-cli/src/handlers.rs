@@ -230,8 +230,9 @@ impl PlaylistTracks {
             }
 
             let mut line = format!("#{ind} {}", track);
-            if line.len() > max_print_width {
-                line = line.split_at(max_print_width - 4).0.to_string() + " ...";
+            if line.chars().count() > max_print_width {
+                line = line.chars().take(max_print_width - 4).collect();
+                line += " ...";
             }
 
             if highlight_ind.is_some() && ind == highlight_ind.unwrap() {
@@ -242,8 +243,9 @@ impl PlaylistTracks {
         }
         if let Some(last) = tracks.last() {
             let mut line = format!("#{} {}", n - 1, last);
-            if line.len() > max_print_width {
-                line = line.split_at(max_print_width - 4).0.to_string() + " ...";
+            if line.chars().count() > max_print_width {
+                line = line.chars().take(max_print_width - 4).collect();
+                line += " ...";
             }
 
             if ((n - 1) as i32) < first_ind || ((n - 1) as i32) > last_ind {
@@ -933,8 +935,9 @@ pub async fn recommendation_generate(auth: &mut SpotifyAuth) -> Result<(), Box<d
                 println!("Got the following recommendations:");
                 for song in songs.iter() {
                     let mut line = format!("{song}");
-                    if line.len() > max_print_width {
-                        line = line.split_at(max_print_width - 4).0.to_string() + " ...";
+                    if line.chars().count() > max_print_width {
+                        line = line.chars().take(max_print_width - 4).collect();
+                        line += " ...";
                     }
                     println!("{line}");
                 }
