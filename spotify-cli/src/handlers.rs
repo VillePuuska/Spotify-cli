@@ -483,10 +483,10 @@ pub async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error:
         .send()
         .await?;
 
-    let response_text = check_for_error_and_return_text(res).await?;
+    let _response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    println!("{response_text}");
+    println!("{_response_text}");
 
     Ok(())
 }
@@ -541,10 +541,10 @@ pub async fn playback_play(
     }
     let res = res_builder.send().await?;
 
-    let response_text = check_for_error_and_return_text(res).await?;
+    let _response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    println!("{response_text}");
+    println!("{_response_text}");
 
     Ok(())
 }
@@ -562,10 +562,10 @@ pub async fn playback_next(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
         .send()
         .await?;
 
-    let response_text = check_for_error_and_return_text(res).await?;
+    let _response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    println!("{response_text}");
+    println!("{_response_text}");
 
     Ok(())
 }
@@ -583,10 +583,10 @@ pub async fn playback_previous(auth: &mut SpotifyAuth) -> Result<(), Box<dyn err
         .send()
         .await?;
 
-    let response_text = check_for_error_and_return_text(res).await?;
+    let _response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    println!("{response_text}");
+    println!("{_response_text}");
 
     Ok(())
 }
@@ -605,10 +605,10 @@ pub async fn playback_restart(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
         .send()
         .await?;
 
-    let response_text = check_for_error_and_return_text(res).await?;
+    let _response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    println!("{response_text}");
+    println!("{_response_text}");
 
     Ok(())
 }
