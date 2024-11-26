@@ -634,23 +634,28 @@ pub async fn queue_show(
         return Err("Not playing anything currently.".into());
     }
 
+    let max_print_width = get_max_print_width();
     let current = player_queue_response.current.unwrap();
-    println!("Currently playing: {}", current);
+    let mut line = format!("Currently playing: {}", current);
+    if line.chars().count() > max_print_width {
+        line = line.chars().take(max_print_width - 4).collect();
+        line += " ...";
+    }
+    println!("{line}");
+    println!("In queue:");
     if number > 1 {
-        let digits = number.to_string().len();
         for (ind, song) in player_queue_response
             .queued
             .iter()
             .take(number - 1)
             .enumerate()
         {
-            let start = format!(
-                "#{}{} in queue:       ",
-                ind + 1,
-                " ".repeat(digits - (ind + 1).to_string().len())
-            );
-            let (start, _) = start.split_at(19);
-            println!("{}{}", start, song);
+            let mut line = format!("#{} {}", ind + 1, song);
+            if line.chars().count() > max_print_width {
+                line = line.chars().take(max_print_width - 4).collect();
+                line += " ...";
+            }
+            println!("{line}");
         }
     }
 
