@@ -253,13 +253,7 @@ impl PlaylistTracks {
 
             let res = client.get(url).headers(headers).send().await?;
 
-            if res.error_for_status_ref().is_err() {
-                let response_text = res.text().await?;
-                let response_parsed: Value = serde_json::from_str(&response_text)?;
-                return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-            }
-
-            let response_text = res.text().await?;
+            let response_text = check_for_error_and_return_text(res).await?;
             let playlist_tracks: PlaylistTracks =
                 serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -367,17 +361,11 @@ async fn get_player(auth: &mut SpotifyAuth) -> Result<PlayerResponse, Box<dyn er
 
     let res = client.get(url).headers(headers.clone()).send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
     if res.status() == StatusCode::NO_CONTENT {
         return Err("No active devices.".into());
     }
 
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let player_response: PlayerResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -398,13 +386,7 @@ async fn get_playlist_from_href(
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let playlist_description: PlaylistDescription =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -427,13 +409,7 @@ async fn get_playlist_from_id(
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let playlist_description: PlaylistDescription =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -485,16 +461,10 @@ pub async fn playback_pause(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error:
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
+    let response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    let response = res.text().await?;
-    #[cfg(debug_assertions)]
-    println!("{response}");
+    println!("{response_text}");
 
     Ok(())
 }
@@ -549,16 +519,10 @@ pub async fn playback_play(
     }
     let res = res_builder.send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
+    let response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    let response = res.text().await?;
-    #[cfg(debug_assertions)]
-    println!("{response}");
+    println!("{response_text}");
 
     Ok(())
 }
@@ -576,16 +540,10 @@ pub async fn playback_next(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
+    let response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    let response = res.text().await?;
-    #[cfg(debug_assertions)]
-    println!("{response}");
+    println!("{response_text}");
 
     Ok(())
 }
@@ -603,16 +561,10 @@ pub async fn playback_previous(auth: &mut SpotifyAuth) -> Result<(), Box<dyn err
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
+    let response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    let response = res.text().await?;
-    #[cfg(debug_assertions)]
-    println!("{response}");
+    println!("{response_text}");
 
     Ok(())
 }
@@ -631,16 +583,10 @@ pub async fn playback_restart(auth: &mut SpotifyAuth) -> Result<(), Box<dyn erro
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
+    let response_text = check_for_error_and_return_text(res).await?;
 
     #[cfg(debug_assertions)]
-    let response = res.text().await?;
-    #[cfg(debug_assertions)]
-    println!("{response}");
+    println!("{response_text}");
 
     Ok(())
 }
@@ -656,14 +602,7 @@ pub async fn queue_show(
     let client = reqwest::Client::new();
     let res = client.get(url).headers(headers).send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
-
+    let response_text = check_for_error_and_return_text(res).await?;
     let player_queue_response: PlayerQueueResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -710,13 +649,7 @@ pub async fn playlist_list(auth: &mut SpotifyAuth) -> Result<(), Box<dyn error::
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let playlist_response: PlaylistResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -1023,13 +956,7 @@ async fn get_available_genres(
     let client = reqwest::Client::new();
     let res = client.get(url).headers(headers).send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let genres_response: GenresResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -1055,11 +982,7 @@ async fn replace_playlist_items(
         .send()
         .await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
+    check_for_error_and_return_text(res).await?;
 
     Ok(())
 }
@@ -1089,13 +1012,7 @@ async fn get_recommendations(
     }
     let res = request_builder.send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let recommendation_response: RecommendationResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -1135,13 +1052,7 @@ async fn find(
     }
     let res = request_builder.send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let find_response: FindResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -1225,13 +1136,7 @@ async fn create_playlist(
     res_builder = res_builder.json(&map);
     let res = res_builder.send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let playlist_create_response: PlaylistCreateResponse =
         serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
@@ -1277,14 +1182,25 @@ async fn get_user(auth: &mut SpotifyAuth) -> Result<User, Box<dyn error::Error>>
     let client = reqwest::Client::new();
     let res = client.get(url).headers(headers).send().await?;
 
-    if res.error_for_status_ref().is_err() {
-        let response_text = res.text().await?;
-        let response_parsed: Value = serde_json::from_str(&response_text)?;
-        return Err(response_parsed["error"]["message"].as_str().unwrap().into());
-    }
-
-    let response_text = res.text().await?;
+    let response_text = check_for_error_and_return_text(res).await?;
     let user_response: User = serde_json::from_str(&response_text).map_err(|_| response_text)?;
 
     Ok(user_response)
+}
+
+async fn check_for_error_and_return_text(
+    res: reqwest::Response,
+) -> Result<String, Box<dyn error::Error>> {
+    if res.error_for_status_ref().is_err() {
+        let response_text = res.text().await?;
+        let response_parsed: Result<Value, serde_json::Error> =
+            serde_json::from_str(&response_text);
+        match response_parsed {
+            Ok(val) => Err(val["error"]["message"].as_str().unwrap().into()),
+            Err(_) => Err(response_text.into()),
+        }
+    } else {
+        let response_text = res.text().await?;
+        Ok(response_text)
+    }
 }
