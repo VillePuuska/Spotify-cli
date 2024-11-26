@@ -5,7 +5,7 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{env, error, fmt::Display, io, time::Duration};
+use std::{collections::HashMap, env, error, fmt::Display, io, time::Duration};
 
 async fn auth_header(auth: &mut SpotifyAuth) -> Result<HeaderMap, Box<dyn error::Error>> {
     let access_token = auth.get_access_token().await?;
@@ -974,13 +974,9 @@ async fn replace_playlist_items(
 
     let client = reqwest::Client::new();
     let uris: Vec<String> = tracks.iter().map(|song| song.uri.to_owned()).collect();
-    let res = client
-        .put(url)
-        .headers(headers)
-        .header("content-length", 0)
-        .query(&[("uris", uris.join(","))])
-        .send()
-        .await?;
+    let mut map = HashMap::new();
+    map.insert("uris", uris);
+    let res = client.put(url).headers(headers).json(&map).send().await?;
 
     check_for_error_and_return_text(res).await?;
 
