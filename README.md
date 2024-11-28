@@ -1,3 +1,5 @@
+Due to Spotify [removing access to the recommendations endpoint](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api) of their WebAPI, this tool is now essentially pointless. Hopefully this change gets reverted, but if not, the development of this tool is ended.
+
 # Spotify-cli
 
 Simple CLI tool for
